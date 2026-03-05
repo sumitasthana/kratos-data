@@ -490,10 +490,6 @@ CREATE TABLE party (
   modified_by                  VARCHAR(50),
   
   -- CONSTRAINTS
-  UNIQUE (individual_ssn) WHERE individual_ssn IS NOT NULL,
-  UNIQUE (organization_tax_id) WHERE organization_tax_id IS NOT NULL,
-  
-  -- INDEXES
   CHECK (party_type IN ('Individual', 'Organization', 'Government'))
 );
 
@@ -502,6 +498,15 @@ CREATE INDEX idx_party_status ON party(party_status);
 CREATE INDEX idx_party_created_date ON party(created_date);
 CREATE INDEX idx_individual_ssn ON party(individual_ssn) WHERE individual_ssn IS NOT NULL;
 CREATE INDEX idx_organization_tax_id ON party(organization_tax_id) WHERE organization_tax_id IS NOT NULL;
+
+-- Partial unique indexes (PostgreSQL partial indexes replace inline UNIQUE...WHERE)
+CREATE UNIQUE INDEX ux_party_individual_ssn
+  ON party (individual_ssn)
+  WHERE individual_ssn IS NOT NULL;
+
+CREATE UNIQUE INDEX ux_party_organization_tax_id
+  ON party (organization_tax_id)
+  WHERE organization_tax_id IS NOT NULL;
 
 -- TABLE: ACCOUNT (Most Atomic: Deposit Account)
 -- Purpose: Core deposit account records; one per customer per product
@@ -1107,6 +1112,9 @@ CREATE INDEX idx_gl_reconciliation_status ON gl_deposit_control_account(gl_recon
 -- SECTION 4: AUDIT LOG TABLE (Optional: For tracking all changes)
 -- ============================================================================
 
+-- Enum for audit_log.change_type (PostgreSQL native enum; not MySQL-style ENUM(...))
+CREATE TYPE change_type_enum AS ENUM ('INSERT', 'UPDATE', 'DELETE');
+
 CREATE TABLE audit_log (
   audit_log_id                 UUID            NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
   
@@ -1116,17 +1124,16 @@ CREATE TABLE audit_log (
   column_name                  VARCHAR(100)    NOT NULL,
   old_value                    TEXT,
   new_value                    TEXT,
-  change_type                  ENUM('INSERT', 'UPDATE', 'DELETE') NOT NULL,
+  change_type                  change_type_enum NOT NULL,
   
   -- AUDIT
   changed_date                 TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  changed_by                   VARCHAR(50)     NOT NULL,
-  
-  -- INDEXES
-  INDEX idx_audit_table (table_name),
-  INDEX idx_audit_date (changed_date),
-  INDEX idx_audit_user (changed_by)
+  changed_by                   VARCHAR(50)     NOT NULL
 );
+
+CREATE INDEX idx_audit_table ON audit_log(table_name);
+CREATE INDEX idx_audit_date  ON audit_log(changed_date);
+CREATE INDEX idx_audit_user  ON audit_log(changed_by);
 
 -- ============================================================================
 -- SECTION 5: DATA DICTIONARY VIEW (For documentation)
