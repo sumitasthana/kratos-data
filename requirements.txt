@@ -1,0 +1,34 @@
+# Kratos Data — Atomic Deposit System
+# Python 3.11+ | FDIC Part 370 / Part 330 compliant
+# Install: pip install -r requirements.txt
+# Requires: Python 3.11+
+#
+# Setup:
+#   python3.11 -m venv .venv
+#   .venv\Scripts\activate        # Windows PowerShell
+#   source .venv/bin/activate     # macOS/Linux
+#   pip install -r requirements.txt
+
+
+# ── Web Framework ─────────────────────────────────────────────
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+
+
+# ── Database ──────────────────────────────────────────────────
+sqlalchemy[asyncio]==2.0.29
+asyncpg==0.29.0                   # PostgreSQL async driver (Python 3.11 wheel available)
+
+
+# ── Data Validation ───────────────────────────────────────────
+pydantic[email]==2.7.0
+
+
+# ── Testing ───────────────────────────────────────────────────
+pytest==8.1.1
+pytest-asyncio==0.23.6
+httpx==0.27.0                     # AsyncClient for FastAPI test client
+
+
+# ── Development Utilities ─────────────────────────────────────
+python-dotenv==1.0.1              # Load DATABASE_URL from .env

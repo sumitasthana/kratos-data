@@ -270,3 +270,15 @@ Created: 2026-02-02
 ---
 
 **Note**: This is a data model repository. For application code that uses this schema, please refer to the main Kratos application repository.
+
+
+
+# Terminal 1 — backend (kratos-data\ root)
+cd "C:\Users\aruneshkumar.lal\OneDrive - Incedo Technology Solutions Ltd\Desktop\kratos-data"
+.\.venv\Scripts\Activate.ps1
+uvicorn main:app --reload --port 8000
+
+# Terminal 2 — frontend
+cd "C:\Users\aruneshkumar.lal\OneDrive - Incedo Technology Solutions Ltd\Desktop\kratos-data\ui"
+npm run dev
+# Open http://localhost:5173
