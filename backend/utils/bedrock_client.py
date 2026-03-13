@@ -47,6 +47,6 @@ class BedrockClient:
 def get_bedrock_client() -> Optional[BedrockClient]:
     """Factory function to create Bedrock client from environment variables"""
     region = os.getenv("AWS_BEDROCK_REGION", "us-east-1")
-    model_id = os.getenv("AWS_BEDROCK_MODEL", "anthropic.claude-sonnet-4-5-20250929-v1:0")
+    model_id = os.getenv("AWS_BEDROCK_MODEL", "anthropic.claude-haiku-4-5-20251001-v1:0")
     
     return BedrockClient(region, model_id)
