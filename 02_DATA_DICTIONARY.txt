@@ -1,0 +1,1881 @@
+================================================================================
+DATA DICTIONARY: ATOMIC DEPOSIT SYSTEM (FDIC PART 370 COMPLIANT)
+================================================================================
+Generated: 2026-02-02
+Version: 1.0
+Database: PostgreSQL 14+
+Schema: public
+
+PURPOSE
+-------
+This data dictionary documents all tables, columns, enumerations, constraints,
+and regulatory mappings for the atomic deposit system data model. It serves as
+the authoritative reference for:
+  - Database schema design and rationale
+  - Data element definitions
+  - Regulatory compliance mappings (FDIC Part 370, Part 330, FinCEN)
+  - Validation rules and business rules
+  - Audit requirements
+  - Control mappings
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. ENUMERATION TYPES
+2. BASE TABLES
+3. SUMMARY OF RELATIONSHIPS
+4. INDEXES & CONSTRAINTS
+5. REGULATORY MAPPINGS
+6. CONTROL MAPPINGS
+7. COMMON QUERIES
+8. APPENDICES
+
+================================================================================
+SECTION 1: ENUMERATION TYPES (DOMAIN TYPES)
+================================================================================
+
+ENUM: party_type_enum
+--------------------------------------
+Values:     Individual, Organization, Government
+Purpose:    Discriminates party record structure (which columns apply)
+Usage:      PARTY.party_type
+
+Details:
+  - Individual: Private person (SSN, DOB, etc.)
+  - Organization: Business entity (EIN, incorporation info, etc.)
+  - Government: Public sector entity (federal, state, local)
+
+Regulatory: FinCEN CIP (31 U.S.C. § 5318); FDIC guidance
+
+
+ENUM: party_status_enum
+--------------------------------------
+Values:     Active, Inactive, Deceased, Dissolved
+Purpose:    Lifecycle status of party record
+Usage:      PARTY.party_status
+
+Details:
+  - Active: Party is current customer or counterparty
+  - Inactive: Party not in active use; retained for historical records
+  - Deceased: Individual party has passed away
+  - Dissolved: Organization has been dissolved/liquidated
+
+Control:    A6-CIP (KYC verification status affects account approval)
+
+
+ENUM: account_status_enum
+--------------------------------------
+Values:     Active, Dormant, Closed, Frozen
+Purpose:    Lifecycle status of deposit account
+Usage:      ACCOUNT.account_status
+
+Details:
+  - Active: Account in normal operation
+  - Dormant: Account inactive for extended period (e.g., >12 months)
+  - Closed: Account permanently closed; no new transactions
+  - Frozen: Account temporarily restricted (legal hold, regulatory action, etc.)
+
+Control:    A1 (ORC validation only on active/dormant accounts)
+
+
+ENUM: account_type_enum
+--------------------------------------
+Values:     Savings, Checking, Money Market, Certificate of Deposit,
+            Individual Retirement Account, Trust Account, Government Account,
+            Business Account, Escrow Account, Sweep Account, Other
+Purpose:    Classifies account product type
+Usage:      ACCOUNT.account_type
+
+Details:
+  Different account types have different regulatory/coverage rules:
+  - IRA → separate $250K coverage per Part 330
+  - Trust → per-beneficiary $250K coverage (max 5 beneficiaries = $1.25M)
+  - Government → may have different coverage rules per statute
+  - Escrow → special coverage rules under Part 330 § 330.10(c)
+
+
+ENUM: orc_code_enum (Ownership Right & Capacity)
+--------------------------------------
+Values:     (24 distinct types per FDIC Part 370 Appendix A)
+
+Single
+  - Single_NameOwnership
+
+Joint
+  - Joint_TenancyByEntirety    (Right of survivorship; spouse typically)
+  - Joint_TenancyInCommon       (No survivorship; tenants own separately)
+  - Joint_JTWROS                (Generic JTWROS)
+
+Retirement Accounts
+  - IRA_Traditional             (401(a), 401(k), 403(b), 457, etc.)
+  - IRA_Roth                    (Roth IRA)
+  - IRA_SEP                     (Simplified Employee Pension)
+  - IRA_SIMPLE                  (SIMPLE IRA)
+  - Keogh_DefinedContribution   (Keogh DC plan)
+  - Keogh_DefinedBenefit        (Keogh DB plan)
+
+Trusts
+  - Trust_Revocable             (Revocable living trust; settlor can modify)
+  - Trust_Irrevocable           (Irrevocable; cannot be modified)
+  - Trust_Charitable            (Charitable remainder trust, etc.)
+  - Trust_Qualified             (QDOT, QPRT, other qualified trusts)
+
+Fiduciary
+  - Escrow_Agent                (Third-party holds funds in escrow)
+  - Agency_PowerOfAttorney      (POA holder acts on behalf of principal)
+
+Government
+  - Government_Federal          (US federal government)
+  - Government_State            (State government)
+  - Government_Local            (Local government)
+
+Business
+  - Business_Corporation        (C corp, S corp)
+  - Business_Partnership        (GP, LP, LLP)
+  - Business_LLC                (Limited Liability Company)
+  - Business_SoleProprietor     (Self-employed individual)
+
+Beneficiary Designation
+  - POD_PayableOnDeath          (Payable-on-Death; designates beneficiary)
+  - TOD_TransferOnDeath         (Transfer-on-Death; designates beneficiary)
+
+Other
+  - FiduciaryOther              (Other fiduciary arrangement)
+
+Purpose:    FDIC deposit insurance coverage classification per Part 330
+Usage:      ACCOUNT_REGULATORY_CLASSIFICATION.orc_code
+Regulatory: FDIC Part 370 Appendix A; Part 330 § 330.1 et seq.
+
+Coverage Example (Part 330):
+  - Single: $250,000 per owner per institution
+  - Joint: $250,000 per owner (e.g., John & Mary each get $250K = $500K total)
+  - IRA: $250,000 (separate from other accounts)
+  - Trust with 3 beneficiaries: $250,000 per beneficiary = $750,000 total (max 5)
+  - POD: $250,000 (reverts to single coverage if no valid POD on file)
+
+Control:    A1 (ORC Assignment); A2 (ORC Validation); C2 (Coverage Calculation)
+
+
+ENUM: interest_calc_method_enum
+--------------------------------------
+Values:     Simple, Compound, Daily, Monthly, Quarterly, Semi-Annually, Annually
+Purpose:    How interest is calculated on account balance
+Usage:      ACCOUNT.interest_calculation_method
+
+Details:
+  - Simple: I = P × R × T (no compounding)
+  - Compound: I = P × (1 + R/n)^n - P (depends on frequency)
+  - Daily: Calculated daily
+  - Monthly: Calculated/posted monthly
+  - Quarterly: Calculated/posted quarterly
+  - Semi-Annually: Twice per year
+  - Annually: Once per year
+
+
+ENUM: orc_insurance_category_enum
+--------------------------------------
+Values:     Covered, Uncovered, Partially_Covered
+Purpose:    Whether deposits under this ORC are FDIC insured
+Usage:      ACCOUNT_REGULATORY_CLASSIFICATION.orc_insurance_category
+
+Details:
+  - Covered: Full FDIC insurance applies (up to SMDIA)
+  - Uncovered: Not eligible for FDIC insurance (e.g., non-eligible IRA)
+  - Partially_Covered: Partial coverage (e.g., amount exceeds SMDIA)
+
+Control:    C2 (Coverage Calculation)
+
+
+ENUM: fiduciary_type_enum
+--------------------------------------
+Values:     Trust_Revocable, Trust_Irrevocable, Trust_Charitable,
+            Trust_QualifiedPersonalResidence, Trust_QualifiedDomesticTrust,
+            Escrow_RealEstate, Escrow_Legal, Escrow_Court,
+            Agency_PowerOfAttorney, Agency_Guardianship, Agency_Conservatorship,
+            Custodial_UTMA, Custodial_UGMA, Other
+Purpose:    Type of fiduciary arrangement (trust, escrow, agency, etc.)
+Usage:      FIDUCIARY_ARRANGEMENT.fiduciary_type
+
+Details:
+  Different types have different legal/regulatory consequences:
+  - Revocable: Settlor retains control; can modify/revoke
+  - Irrevocable: Cannot be modified; irrevocable transfer of assets
+  - Escrow: Third party holds funds pending satisfaction of condition
+  - POA: Agent acts on behalf of principal (alive)
+  - Guardianship: Court-appointed guardian manages affairs
+
+Regulatory: FDIC Part 330 § 330.10(d) (trust beneficiary coverage); Part 370 § 370.5
+
+Control:    A3 (Fiduciary Documentation); A4 (Fiduciary Beneficiary Data)
+
+
+ENUM: beneficiary_type_enum
+--------------------------------------
+Values:     Individual, Organization, Class_ChildrenOfSettlor,
+            Class_DescendantsOfSettlor, Class_Spouse, Class_Grandchildren,
+            Charity, Estate, Other
+Purpose:    Type of beneficiary (specific person vs. class of beneficiaries)
+Usage:      FIDUCIARY_BENEFICIARY.beneficiary_type
+
+Details:
+  - Individual: Specific named person
+  - Organization: Corporation, charity, etc.
+  - Class: Group of people (e.g., "all my children")
+  - Estate: Trust distribution to the settlor's estate
+
+Regulatory: FDIC Part 330 § 330.10(d) defines coverage for "named beneficiaries"
+            (max 5 at $250K each = $1.25M total)
+
+Control:    A4 (Fiduciary Beneficiary validation)
+
+
+ENUM: account_feature_type_enum
+--------------------------------------
+Values:     Sweep_ToAccount, Sweep_FromAccount, Sweep_Bi-directional,
+            POD_PayableOnDeath, TOD_TransferOnDeath, ZeroBalance,
+            AutomaticTransfer, OverdraftProtection, AccountLinkage,
+            MoneyMarketSweep, LiquidityReserve, CourtEscrow,
+            TaxWithholding, Other
+Purpose:    Special features or arrangements attached to account
+Usage:      ACCOUNT_FEATURE.feature_type
+
+Details:
+  - Sweep: Automatic transfer of funds between linked accounts
+  - POD/TOD: Beneficiary designation (on death)
+  - OverdraftProtection: Link to another account for overdraft coverage
+  - CourtEscrow: Court-ordered escrow hold
+  - MoneyMarketSweep: Excess to MM; shortfall from MM
+
+Regulatory: FDIC Part 370 § 370.5 (requires special handling for coverage calc)
+
+Control:    D1 (Sweep Configuration); D2 (Sweep Coverage Calc);
+            A5 (POD/TOD Designation)
+
+
+ENUM: transaction_type_enum
+--------------------------------------
+Values:     Deposit_Cash, Deposit_Check, Deposit_ACH, Deposit_Wire,
+            Deposit_Transfer, Deposit_Interest, Withdrawal_ATM,
+            Withdrawal_Check, Withdrawal_ACH, Withdrawal_Wire,
+            Withdrawal_Transfer, Withdrawal_Fee, Withdrawal_Overdraft,
+            Correction_Debit, Correction_Credit, Reversal, Sweep, Other
+Purpose:    Type of transaction on account
+Usage:      TRANSACTION.transaction_type
+
+Details:
+  Transactions affect balance calculation:
+  - Deposits: Increase balance
+  - Withdrawals: Decrease balance
+  - Corrections: May increase or decrease (e.g., error reversal)
+  - Interest: Special deposit type
+  - Fees: Special withdrawal type
+
+Control:    B1 (Daily Balance Reconciliation uses transaction counts)
+
+
+ENUM: verification_method_enum
+--------------------------------------
+Values:     DocumentReview, CIPProcess, SignedAgreement, CourtOrder,
+            AutomatedMatch, ThirdPartyConfirm, PhysicalReview,
+            ElectronicReview
+Purpose:    How was identity/ownership/beneficiary verified?
+Usage:      ACCOUNT_OWNERSHIP.ownership_verification_method,
+            ACCOUNT_REGULATORY_CLASSIFICATION.orc_determination_method,
+            FIDUCIARY_ARRANGEMENT.document_verification_method,
+            KYC_CIP_VERIFICATION.cip_verification_method
+            (and others)
+
+Details:
+  Different methods have different assurance levels:
+  - CIPProcess: Formal CIP per FinCEN (highest assurance)
+  - DocumentReview: Reviewed physical documents
+  - SignedAgreement: Signed by party
+  - CourtOrder: Certified by court (for guardianship, etc.)
+  - AutomatedMatch: System-generated match (lower assurance)
+
+Regulatory: FinCEN CIP (31 U.S.C. § 5318); FDIC Part 370 § 370.4
+
+Control:    A6 (KYC/CIP); A2 (ORC Verification)
+
+
+ENUM: risk_rating_enum
+--------------------------------------
+Values:     Low, Medium, High, Critical
+Purpose:    Overall risk rating for customer/account
+Usage:      KYC_CIP_VERIFICATION.risk_rating
+
+Details:
+  Risk rating drives:
+  - Enhanced monitoring requirements
+  - Review frequency (low = less frequent; critical = continuous)
+  - Escalation procedures
+  - Data gathering requirements
+
+Control:    H3 (Management Reporting includes risk ratings)
+
+
+================================================================================
+SECTION 2: BASE TABLES (DETAILED DESCRIPTIONS)
+================================================================================
+
+TABLE: party
+================================================================================
+Purpose:    Single source of truth for all parties (customers, organizations,
+            beneficiaries, trustees, etc.)
+Regulatory: FinCEN CIP (31 U.S.C. § 5318); FDIC Guidance
+Rows:       ~1M (for 500K customer bank)
+Retention:  Permanent (7+ years for audit trail)
+Audit:      All columns logged (created_date, created_by, modified_date)
+
+COLUMNS:
+
+party_id (UUID, PK)
+  Description:   Unique identifier for party record
+  Type:          UUID (gen_random_uuid())
+  Nullable:      NO
+  Constraints:   PRIMARY KEY
+  Example:       '550e8400-e29b-41d4-a716-446655440000'
+  Notes:         Never changes; used as FK in all other tables
+  Control:       Core identifier; audit trail from creation
+
+party_type (party_type_enum, NOT NULL)
+  Description:   Discriminates party type (determines which columns apply)
+  Type:          party_type_enum
+  Nullable:      NO
+  Values:        'Individual', 'Organization', 'Government'
+  Example:       'Individual'
+  Notes:         If 'Individual', only individual_* columns apply
+                 If 'Organization', only organization_* columns apply
+                 If 'Government', only government_* columns apply
+                 NULL values in other branches are acceptable
+  Control:       A6 (KYC/CIP validation per party_type)
+
+party_status (party_status_enum, NOT NULL, DEFAULT='Active')
+  Description:   Lifecycle status of party
+  Type:          party_status_enum
+  Nullable:      NO
+  Values:        'Active', 'Inactive', 'Deceased', 'Dissolved'
+  Example:       'Active'
+  Notes:         Affects account eligibility and monitoring
+                 'Deceased' parties should trigger beneficiary payouts
+                 'Dissolved' organizations should close accounts
+  Control:       H3 (Management reporting; deceased parties flagged)
+
+individual_name_given (VARCHAR(50), NULLABLE)
+  Description:   First name
+  Type:          VARCHAR(50)
+  Nullable:      YES
+  Example:       'John'
+  Notes:         Applies only if party_type='Individual'
+  Control:       A6 (KYC verification)
+
+individual_name_family (VARCHAR(50), NULLABLE)
+  Description:   Last name / surname
+  Type:          VARCHAR(50)
+  Nullable:      YES
+  Example:       'Smith'
+  Notes:         Applies only if party_type='Individual'
+  Control:       A6 (KYC verification)
+
+individual_date_of_birth (DATE, NULLABLE)
+  Description:   Date of birth (YYYY-MM-DD)
+  Type:          DATE
+  Nullable:      YES
+  Example:       '1970-05-15'
+  Notes:         Applies only if party_type='Individual'
+                 Should be ≥18 years before account opening
+  Control:       A6 (CIP verification; age check for minors)
+
+individual_ssn (CHAR(9), NULLABLE, UNIQUE)
+  Description:   Social Security Number (9 digits, no dashes stored)
+  Type:          CHAR(9)
+  Nullable:      YES
+  Example:       '123456789'
+  Constraints:   UNIQUE (individual_ssn) WHERE individual_ssn IS NOT NULL
+  Notes:         Applies only if party_type='Individual'
+                 Stored without dashes (validation in application layer)
+                 Highly sensitive; encryption recommended at rest
+  Control:       A6 (CIP verification; SSN validation)
+
+organization_legal_name (VARCHAR(255), NULLABLE)
+  Description:   Official registered name of organization
+  Type:          VARCHAR(255)
+  Nullable:      YES
+  Example:       'ABC Manufacturing Corporation'
+  Notes:         Applies only if party_type='Organization'
+  Control:       A6 (KYC verification)
+
+organization_tax_id (VARCHAR(20), NULLABLE, UNIQUE)
+  Description:   Tax ID / EIN in XX-XXXXXXX format
+  Type:          VARCHAR(20)
+  Nullable:      YES
+  Example:       '12-3456789'
+  Constraints:   UNIQUE (organization_tax_id) WHERE organization_tax_id IS NOT NULL
+  Notes:         Applies only if party_type='Organization'
+  Control:       A6 (KYC verification)
+
+address_street_line1 (VARCHAR(100), NULLABLE)
+  Description:   Street address (line 1)
+  Type:          VARCHAR(100)
+  Nullable:      YES
+  Example:       '123 Main Street'
+  Notes:         Applies to all party_type values
+  Control:       A6 (Address verification per CIP)
+
+address_city (VARCHAR(50), NULLABLE)
+  Description:   City name
+  Type:          VARCHAR(50)
+  Nullable:      YES
+  Example:       'New York'
+  Control:       A6 (Address verification)
+
+address_state_province (VARCHAR(50), NULLABLE)
+  Description:   State or province name (or abbreviation)
+  Type:          VARCHAR(50)
+  Nullable:      YES
+  Example:       'New York' or 'NY'
+  Control:       A6 (Address verification)
+
+address_postal_code (VARCHAR(20), NULLABLE)
+  Description:   ZIP code or postal code
+  Type:          VARCHAR(20)
+  Nullable:      YES
+  Example:       '10001'
+  Notes:         Format varies by country (US ZIP = 5 digits, extended = +4)
+  Control:       A6 (Address verification)
+
+address_country (CHAR(2), NULLABLE)
+  Description:   Country code (ISO 3166-1 alpha-2)
+  Type:          CHAR(2)
+  Nullable:      YES
+  Example:       'US'
+  Notes:         Determines regulatory requirements (especially non-US)
+  Control:       A6 (CIP; non-US addresses may trigger enhanced due diligence)
+
+address_is_usa (BOOLEAN, DEFAULT=FALSE)
+  Description:   Cached flag: is this a USA address? (for quick filtering)
+  Type:          BOOLEAN
+  Nullable:      NO
+  Values:        TRUE (if address_country='US'), FALSE (otherwise)
+  Example:       TRUE
+  Notes:         Derived from address_country; for query optimization
+  Control:       None (cache only)
+
+created_date (TIMESTAMP, NOT NULL, DEFAULT=CURRENT_TIMESTAMP)
+  Description:   When this party record was created
+  Type:          TIMESTAMP
+  Nullable:      NO
+  Example:       '2025-01-15 14:30:00'
+  Notes:         Audit trail; never changes
+  Control:       H2 (Audit trail for all records)
+
+created_by (VARCHAR(50), NOT NULL)
+  Description:   User ID who created this record
+  Type:          VARCHAR(50)
+  Nullable:      NO
+  Example:       'alice.smith@bank.com'
+  Control:       H2 (Audit trail; identity of creator)
+
+modified_date (TIMESTAMP, NOT NULL, DEFAULT=CURRENT_TIMESTAMP, ON UPDATE)
+  Description:   When this party record was last modified
+  Type:          TIMESTAMP
+  Nullable:      NO
+  Example:       '2026-01-15 09:15:30'
+  Notes:         Auto-updated on any change
+  Control:       H2 (Audit trail; when modified)
+
+modified_by (VARCHAR(50), NULLABLE)
+  Description:   User ID who last modified this record
+  Type:          VARCHAR(50)
+  Nullable:      YES
+  Example:       'bob.jones@bank.com'
+  Control:       H2 (Audit trail; identity of modifier)
+
+INDEXES:
+  PRIMARY KEY (party_id)
+  UNIQUE (individual_ssn) WHERE individual_ssn IS NOT NULL
+  UNIQUE (organization_tax_id) WHERE organization_tax_id IS NOT NULL
+  INDEX party_type (party_type)
+  INDEX party_status (party_status)
+  INDEX created_date (created_date)
+
+RELATIONSHIPS (FKs):
+  party_id ← ACCOUNT_OWNERSHIP.owner_party_id (many)
+  party_id ← ACCOUNT_OWNERSHIP.beneficiary_party_id (many)
+  party_id ← ACCOUNT.primary_owner_party_id (many)
+  party_id ← FIDUCIARY_ARRANGEMENT.trustee_party_id (many)
+  party_id ← FIDUCIARY_ARRANGEMENT.settlor_party_id (many)
+  party_id ← FIDUCIARY_BENEFICIARY.beneficiary_party_id (many)
+  party_id ← ACCOUNT_FEATURE.beneficiary_party_id (many)
+  party_id ← ACCOUNT_FEATURE.overdraft_linked_account_id (many)
+  party_id ← TRANSACTION.counterparty_party_id (many)
+  party_id ← KYC_CIP_VERIFICATION.party_id (1:many)
+
+CONTROLS MAPPED:
+  A6 (KYC/CIP Verification):
+    - Verify individual_ssn or organization_tax_id per CIP
+    - Verify address per CIP
+    - Check party_status (must be 'Active' for account opening)
+
+NOTES:
+  - Design is fully normalized: Individual and Organization never mixed in same row
+  - NULL values acceptable in non-applicable columns per party_type
+  - Audit trail (created_date, created_by, modified_date, modified_by) mandatory
+  - Recommended: Encrypt SSN/Tax ID at rest; mask in logs
+
+---
+
+TABLE: account
+================================================================================
+Purpose:    Core deposit account records; one per customer per product type
+Regulatory: FDIC Part 370 § 370.4(a)-(b); Part 330 § 330.1
+Rows:       ~500K (for 500K customer bank)
+Retention:  Permanent (7+ years for audit trail)
+Audit:      All columns logged
+
+COLUMNS:
+
+account_id (UUID, PK)
+  Description:   Unique identifier for account
+  Type:          UUID
+  Nullable:      NO
+  Constraints:   PRIMARY KEY
+  Notes:         Never changes; used as FK throughout system
+
+account_number (VARCHAR(20), NOT NULL, UNIQUE)
+  Description:   Bank-facing account number (customer-visible)
+  Type:          VARCHAR(20)
+  Nullable:      NO
+  Example:       '0123456789'
+  Constraints:   UNIQUE
+  Notes:         Format varies by bank; typically 10–12 digits
+  Control:       B1 (Reconciliation by account number)
+
+account_status (account_status_enum, NOT NULL, DEFAULT='Active')
+  Description:   Lifecycle status of account
+  Type:          account_status_enum
+  Nullable:      NO
+  Values:        'Active', 'Dormant', 'Closed', 'Frozen'
+  Example:       'Active'
+  Notes:         Only 'Active' and 'Dormant' accounts eligible for normal operations
+                 'Closed' and 'Frozen' require special handling
+  Control:       A1 (ORC assignment only for 'Active'/'Dormant')
+
+account_type (account_type_enum, NOT NULL)
+  Description:   Product type (Savings, Checking, IRA, Trust, etc.)
+  Type:          account_type_enum
+  Nullable:      NO
+  Example:       'Savings'
+  Notes:         Determines regulatory treatment and coverage rules
+  Control:       A1 (IRA type → IRA ORC code; Trust type → Trust ORC code)
+
+account_open_date (DATE, NOT NULL)
+  Description:   Date account was opened
+  Type:          DATE
+  Nullable:      NO
+  Example:       '2020-03-15'
+  Notes:         Cannot be in future; typically today's date at opening
+  Control:       A1 (ORC must be assigned on account_open_date)
+
+account_close_date (DATE, NULLABLE)
+  Description:   Date account was closed (NULL if still open)
+  Type:          DATE
+  Nullable:      YES
+  Example:       '2025-12-31'
+  Notes:         NULL = still open; when set, account_status should be 'Closed'
+  Control:       None (informational)
+
+primary_owner_party_id (UUID, NOT NULL, FK)
+  Description:   Reference to primary account owner (PARTY table)
+  Type:          UUID
+  Nullable:      NO
+  Constraints:   FOREIGN KEY → PARTY.party_id
+  Example:       '550e8400-e29b-41d4-a716-446655440000'
+  Notes:         The account holder on the account; additional owners in ACCOUNT_OWNERSHIP
+  Control:       A1 (Primary owner must have KYC_Status='Verified')
+
+interest_rate_percentage (NUMERIC(6, 4), NOT NULL, DEFAULT=0.0000)
+  Description:   Annual interest rate as decimal percentage (e.g., 1.2500 = 1.25%)
+  Type:          NUMERIC(6, 4)
+  Nullable:      NO
+  Example:       1.2500
+  Precision:     Total 6 digits; 4 decimal places (allows up to 99.9999%)
+  Notes:         Zero for non-interest-bearing accounts (e.g., checking)
+  Control:       B3 (Interest Accrual Validation)
+
+interest_rate_effective_date (DATE, NOT NULL, DEFAULT=CURRENT_DATE)
+  Description:   Date this interest rate became effective
+  Type:          DATE
+  Nullable:      NO
+  Example:       '2025-01-01'
+  Notes:         When rate changes, insert new row with new effective date
+  Control:       B3 (Validate rate changes and calculation)
+
+interest_rate_expiry_date (DATE, NULLABLE)
+  Description:   Date this interest rate expires (NULL if ongoing)
+  Type:          DATE
+  Nullable:      YES
+  Example:       '2025-06-30'
+  Notes:         When set, indicates rate will change on this date
+  Control:       B3 (Monitor for expired rates)
+
+interest_calculation_method (interest_calc_method_enum, NULLABLE)
+  Description:   How interest is calculated (Simple, Compound, Daily, etc.)
+  Type:          interest_calc_method_enum
+  Nullable:      YES
+  Example:       'Daily'
+  Notes:         Affects precision of interest accrual calculation
+  Control:       B3 (Interest Accrual uses this method)
+
+interest_last_accrual_date (DATE, NULLABLE)
+  Description:   Date interest was last accrued/posted
+  Type:          DATE
+  Nullable:      YES
+  Example:       '2025-01-31'
+  Notes:         Used to ensure interest is accrued timely
+  Control:       F3 (Coverage Gap control flags if >30 days old without accrual)
+
+current_balance (NUMERIC(18, 2), NOT NULL, DEFAULT=0.00)
+  Description:   Current account balance as of current_balance_date
+  Type:          NUMERIC(18, 2)
+  Nullable:      NO
+  Example:       12345.67
+  Precision:     Up to $999,999,999,999.99
+  Notes:         This is a snapshot; not real-time between EOD updates
+                 = sum of all deposits - withdrawals + interest - fees
+  Control:       B1 (Daily Balance Reconciliation validates this)
+
+current_balance_date (DATE, NOT NULL)
+  Description:   Date as of which current_balance is calculated (usually prior EOD)
+  Type:          DATE
+  Nullable:      NO
+  Example:       '2026-01-31'
+  Notes:         If today is Feb 1, current_balance is typically Jan 31 EOD
+  Control:       B1 (Reconciliation checks that this is recent)
+
+accrued_interest_not_posted (NUMERIC(18, 2), NOT NULL, DEFAULT=0.00)
+  Description:   Interest earned but not yet posted to balance
+  Type:          NUMERIC(18, 2)
+  Nullable:      NO
+  Example:       1.23
+  Notes:         Increases with time; resets when posted to current_balance
+  Control:       B3 (Interest Accrual Validation)
+
+minimum_balance (NUMERIC(18, 2), NOT NULL, DEFAULT=0.00)
+  Description:   Minimum balance required to maintain account
+  Type:          NUMERIC(18, 2)
+  Nullable:      NO
+  Example:       100.00
+  Notes:         If balance falls below, may incur fees or account closure
+  Control:       None (business rule enforcement in application)
+
+maximum_balance (NUMERIC(18, 2), NULLABLE)
+  Description:   Maximum balance allowed in account (NULL = no limit)
+  Type:          NUMERIC(18, 2)
+  Nullable:      YES
+  Example:       1000000.00
+  Notes:         Some account types have limits
+  Control:       None (business rule enforcement in application)
+
+transaction_daily_withdrawal_limit (NUMERIC(18, 2), NULLABLE)
+  Description:   Maximum $ amount that can be withdrawn per day (NULL = no limit)
+  Type:          NUMERIC(18, 2)
+  Nullable:      YES
+  Example:       5000.00
+  Notes:         Per Regulation D (savings accounts); may be waived
+  Control:       None (application enforces)
+
+transaction_monthly_withdrawal_limit (INT, NULLABLE)
+  Description:   Maximum number of withdrawals per month (NULL = no limit)
+  Type:          INT
+  Nullable:      YES
+  Example:       6
+  Notes:         Per Regulation D (savings accounts); may be waived
+  Control:       None (application enforces)
+
+created_date (TIMESTAMP, NOT NULL, DEFAULT=CURRENT_TIMESTAMP)
+  Description:   When account was created in system
+  Type:          TIMESTAMP
+  Nullable:      NO
+  Notes:         Audit trail
+
+created_by (VARCHAR(50), NOT NULL)
+  Description:   User who opened account
+  Type:          VARCHAR(50)
+  Nullable:      NO
+  Control:       H2 (Audit trail)
+
+modified_date (TIMESTAMP, NOT NULL, DEFAULT=CURRENT_TIMESTAMP)
+  Description:   When account was last modified
+  Type:          TIMESTAMP
+  Nullable:      NO
+  Control:       H2 (Audit trail)
+
+modified_by (VARCHAR(50), NULLABLE)
+  Description:   User who last modified account
+  Type:          VARCHAR(50)
+  Nullable:      YES
+  Control:       H2 (Audit trail)
+
+INDEXES:
+  PRIMARY KEY (account_id)
+  UNIQUE (account_number)
+  INDEX account_status
+  INDEX primary_owner_party_id
+  INDEX account_open_date
+  INDEX current_balance_date
+
+RELATIONSHIPS (FKs):
+  account_id ← ACCOUNT_OWNERSHIP.account_id (1:many)
+  account_id ← ACCOUNT_REGULATORY_CLASSIFICATION.account_id (1:1)
+  account_id ← FIDUCIARY_ARRANGEMENT.account_id (1:1)
+  account_id ← ACCOUNT_FEATURE.account_id (1:many)
+  account_id ← TRANSACTION.account_id (1:many)
+  account_id ← DAILY_ACCOUNT_BALANCE.account_id (1:many)
+  account_id ← OFFICIAL_ITEMS.account_id (1:many)
+  account_id ← DEPOSIT_INSURANCE_CALCULATION.account_id (1:many)
+
+CONTROLS MAPPED:
+  A1 (ORC Assignment):
+    - Must be assigned on account_open_date
+    - See ACCOUNT_REGULATORY_CLASSIFICATION.orc_code
+  
+  B1 (Daily Balance Reconciliation):
+    - current_balance vs. GL control account
+    - current_balance_date should be recent (≤1 day old)
+  
+  B3 (Interest Accrual Validation):
+    - interest_last_accrual_date ≤ 30 days old
+    - accrued_interest_not_posted calculated per interest_calculation_method
+
+VALIDATION RULES:
+  1. account_open_date ≤ CURDATE()
+  2. account_close_date IS NULL OR account_close_date ≥ account_open_date
+  3. current_balance ≥ 0
+  4. accrued_interest_not_posted ≥ 0
+  5. interest_rate_percentage BETWEEN 0 AND 99.9999
+
+---
+
+TABLE: account_regulatory_classification
+================================================================================
+Purpose:    FDIC Part 370 Ownership Right & Capacity (ORC) classification
+            Determines deposit insurance coverage per Part 330
+Regulatory: FDIC Part 370 § 370.4(c), § 370.3(b)
+            FDIC Part 330 § 330.1 et seq.
+            FDIC Part 370 Appendix A (ORC codes)
+Rows:       1:1 with ACCOUNT (one per account)
+Retention:  Permanent
+Audit:      All columns logged
+
+COLUMNS:
+
+classification_id (UUID, PK)
+  Description:   Unique identifier for classification record
+  Type:          UUID
+  Nullable:      NO
+  Constraints:   PRIMARY KEY
+  Notes:         Never changes
+
+account_id (UUID, NOT NULL, FK, UNIQUE)
+  Description:   Reference to associated ACCOUNT
+  Type:          UUID
+  Nullable:      NO
+  Constraints:   FOREIGN KEY → ACCOUNT.account_id, UNIQUE
+  Example:       '550e8400-e29b-41d4-a716-446655440000'
+  Notes:         One classification per account (1:1 relationship)
+
+orc_code (orc_code_enum, NOT NULL)
+  Description:   Ownership Right & Capacity code per FDIC Part 370 Appendix A
+  Type:          orc_code_enum
+  Nullable:      NO
+  Example:       'Joint_JTWROS'
+  Notes:         Determines FDIC coverage per Part 330 rules
+                 Examples:
+                   - 'Single': $250K per owner
+                   - 'Joint_JTWROS': $250K per owner (e.g., John & Mary each get $250K)
+                   - 'Trust_Revocable': $250K per named beneficiary (up to 5)
+                   - 'IRA_Traditional': $250K (separate from other accounts)
+                   - 'POD_PayableOnDeath': $250K (or lower if no valid POD on file)
+  Control:       A1 (ORC Assignment); A2 (ORC Validation); C2 (Coverage Calculation)
+  Regulatory Ref: FDIC Part 330 § 330.1(a) (SMDIA = $250,000)
+
+orc_insured_amount_per_owner (NUMERIC(18, 2), NOT NULL, DEFAULT=250000.00)
+  Description:   Standard Maximum Deposit Insurance Amount (SMDIA) per owner under this ORC
+  Type:          NUMERIC(18, 2)
+  Nullable:      NO
+  Example:       250000.00
+  Notes:         Current standard: $250,000
+                 Set by Congress (12 U.S.C. § 1821(a)(2)(D)); last changed 2010
+                 May change via legislative action; database field allows for updates
+  Regulatory Ref: 12 U.S.C. § 1821(a)(2)(D); FDIC Part 330 § 330.1
+
+orc_insurance_category (insurance_category_enum, DEFAULT='Covered')
+  Description:   Whether deposits under this ORC are eligible for FDIC insurance
+  Type:          insurance_category_enum
+  Nullable:      NO
+  Values:        'Covered', 'Uncovered', 'Partially_Covered'
+  Example:       'Covered'
+  Notes:         Most ORC codes are 'Covered'
+                 Some may be 'Uncovered' per statute (e.g., deposits exceeding SMDIA)
+                 'Partially_Covered' = partial coverage applies
+  Control:       C2 (Coverage Calculation uses this)
+
+orc_determination_date (DATE, NOT NULL, DEFAULT=CURRENT_DATE)
+  Description:   Date ORC code was assigned
+  Type:          DATE
+  Nullable:      NO
+  Example:       '2025-01-15'
+  Notes:         Should match ACCOUNT.account_open_date (assigned at opening)
+  Control:       A1 (ORC must be assigned at account opening)
+
+orc_determination_method (orc_determination_method_enum, NULLABLE)
+  Description:   How was ORC code determined? (form, signed agreement, document review, etc.)
+  Type:          orc_determination_method_enum
+  Nullable:      YES
+  Values:        'RegistrationForm', 'SignedAgreement', 'TrustDocument', 'AutomatedMatch', 'Manual'
+  Example:       'RegistrationForm'
+  Notes:         Audit trail; shows evidence basis for ORC assignment
+  Control:       A1 (ORC Assignment control; evidence artifact)
+
+orc_verification_date (DATE, NOT NULL)
+  Description:   Date ORC code was last verified/reviewed
+  Type:          DATE
+  Nullable:      NO
+  Example:       '2025-01-15'
+  Notes:         Should be recent (per control A2: quarterly validation)
+  Control:       A2 (ORC Validation; must be ≤12 months old for quarterly check)
+
+orc_change_reason (VARCHAR(255), NULLABLE)
+  Description:   Reason ORC was changed (if changed)
+  Type:          VARCHAR(255)
+  Nullable:      YES
+  Example:       'Customer added joint owner; changed from Single to Joint_JTWROS'
+  Notes:         Captures business reason for ORC change
+  Control:       A2 (ORC change audit trail)
+
+orc_change_prior_code (orc_code_enum, NULLABLE)
+  Description:   Prior ORC code (if this record reflects a change)
+  Type:          orc_code_enum
+  Nullable:      YES
+  Example:       'Single'
+  Notes:         Documents ORC history (from → to)
+  Control:       A2 (Audit trail for ORC changes)
+
+orc_change_date (DATE, NULLABLE)
+  Description:   Date ORC was changed (if changed)
+  Type:          DATE
+  Nullable:      YES
+  Example:       '2025-06-01'
+  Notes:         When NULL, indicates ORC has never been changed
+  Control:       A2 (Audit trail)
+
+-- CACHED/DERIVED FLAGS (for fast filtering; values derived from orc_code)
+is_joint_ownership (BOOLEAN, NOT NULL, DEFAULT=FALSE)
+  Description:   Cached: is this a joint account? (ORC contains 'Joint')
+  Type:          BOOLEAN
+  Nullable:      NO
+  Example:       TRUE (if orc_code='Joint_JTWROS')
+  Notes:         Derived from orc_code but stored for query optimization
+                 Enables fast query: SELECT ... WHERE is_joint_ownership=TRUE
+  Control:       None (optimization flag)
+
+is_trust (BOOLEAN, NOT NULL, DEFAULT=FALSE)
+  Description:   Cached: is this a trust account? (ORC contains 'Trust')
+  Type:          BOOLEAN
+  Nullable:      NO
+  Example:       TRUE (if orc_code='Trust_Revocable')
+  Control:       C2 (Coverage Calculation filters by is_trust)
+
+is_ira (BOOLEAN, NOT NULL, DEFAULT=FALSE)
+  Description:   Cached: is this an IRA? (ORC contains 'IRA')
+  Type:          BOOLEAN
+  Nullable:      NO
+  Control:       C2 (IRA coverage separate from other accounts)
+
+is_payable_on_death (BOOLEAN, NOT NULL, DEFAULT=FALSE)
+  Description:   Cached: is there a POD designation? (ORC='POD_PayableOnDeath')
+  Type:          BOOLEAN
+  Nullable:      NO
+  Control:       C2 (POD reverts to single coverage if no valid designation)
+
+is_transfer_on_death (BOOLEAN, NOT NULL, DEFAULT=FALSE)
+  Description:   Cached: is there a TOD designation? (ORC='TOD_TransferOnDeath')
+  Type:          BOOLEAN
+  Nullable:      NO
+  Control:       C2 (TOD coverage calculation)
+
+is_business (BOOLEAN, NOT NULL, DEFAULT=FALSE)
+  Description:   Cached: is this a business account? (ORC contains 'Business')
+  Type:          BOOLEAN
+  Nullable:      NO
+  Control:       Business deposit monitoring per Part 369 (CRA)
+
+is_government (BOOLEAN, NOT NULL, DEFAULT=FALSE)
+  Description:   Cached: is this a government deposit? (ORC contains 'Government')
+  Type:          BOOLEAN
+  Nullable:      NO
+  Control:       Government funds may have special rules
+
+INDEXES:
+  PRIMARY KEY (classification_id)
+  UNIQUE (account_id)
+  INDEX orc_code
+  INDEX is_joint_ownership
+  INDEX is_trust
+  INDEX is_ira
+  INDEX orc_verification_date
+
+RELATIONSHIPS (FKs):
+  classification_id ← DEPOSIT_INSURANCE_CALCULATION.classification_id (1:many)
+
+CONTROLS MAPPED:
+  A1 (ORC Assignment):
+    - orc_code must be assigned on account_open_date
+    - orc_determination_method documents how it was assigned
+  
+  A2 (ORC Validation):
+    - orc_verification_date must be ≤12 months old (quarterly validation)
+    - orc_code consistency checked against account characteristics
+    - is_joint_ownership → must have 2+ owners in ACCOUNT_OWNERSHIP
+    - is_trust → must have FIDUCIARY_ARRANGEMENT record
+  
+  C2 (Coverage Calculation):
+    - orc_code determines Part 330 coverage rules
+    - orc_insured_amount_per_owner = $250K (SMDIA) per owner
+    - is_joint_ownership → each owner gets separate $250K coverage
+    - is_trust → each beneficiary gets $250K (up to 5)
+    - is_ira → separate $250K (not combined with other accounts)
+
+VALIDATION RULES:
+  1. orc_code NOT NULL
+  2. orc_determination_date ≤ CURDATE()
+  3. orc_verification_date ≤ CURDATE()
+  4. orc_change_date IS NULL OR orc_change_date > orc_determination_date
+  5. is_joint_ownership = TRUE only if orc_code LIKE '%Joint%'
+  6. is_trust = TRUE only if orc_code LIKE '%Trust%'
+  7. is_ira = TRUE only if orc_code LIKE '%IRA%' OR orc_code LIKE '%Keogh%'
+  8. is_payable_on_death = TRUE only if orc_code = 'POD_PayableOnDeath'
+
+REGULATORY NOTES:
+  - FDIC Part 370 § 370.4(c): "The bank must maintain complete and accurate
+    information needed to determine the amount of deposit insurance coverage...
+    including the ownership right and capacity in which each deposit is held."
+  
+  - FDIC Part 330 § 330.1: Deposit insurance coverage is determined based on
+    the "Ownership Right and Capacity" (ORC) in which funds are held.
+  
+  - Most common ORCs and coverage:
+    * Single: $250,000 per owner per bank
+    * Joint: $250,000 per owner per bank
+    * IRA: $250,000 per owner per bank (separate from single account)
+    * Trust: $250,000 per named beneficiary (up to 5 = $1.25M max)
+    * POD: $250,000 per designated beneficiary (reverts to single if invalid)
+
+---
+
+[Additional tables follow same detailed format...]
+[ABBREVIATED FOR SPACE; full DD includes:]
+  - TABLE: fiduciary_arrangement
+  - TABLE: fiduciary_beneficiary
+  - TABLE: account_ownership
+  - TABLE: account_feature
+  - TABLE: transaction
+  - TABLE: daily_account_balance
+  - TABLE: official_items
+  - TABLE: deposit_insurance_calculation
+  - TABLE: kyc_cip_verification
+  - TABLE: gl_deposit_control_account
+
+================================================================================
+SECTION 3: SUMMARY OF RELATIONSHIPS (ER DIAGRAM IN TEXT)
+================================================================================
+
+PARTY (Core Master)
+  ├── 1:N → ACCOUNT_OWNERSHIP (party as owner)
+  ├── 1:N → ACCOUNT_OWNERSHIP (party as beneficiary)
+  ├── 1:N → ACCOUNT (as primary_owner)
+  ├── 1:N → FIDUCIARY_ARRANGEMENT (as trustee)
+  ├── 1:N → FIDUCIARY_ARRANGEMENT (as settlor)
+  ├── 1:N → FIDUCIARY_BENEFICIARY (as beneficiary)
+  ├── 1:N → ACCOUNT_FEATURE (as POD/TOD beneficiary)
+  ├── 1:N → TRANSACTION (as counterparty)
+  └── 1:N → KYC_CIP_VERIFICATION (verification records)
+
+ACCOUNT (Core Transaction Entity)
+  ├── 1:N → ACCOUNT_OWNERSHIP (multiple owners for joint/trust)
+  ├── 1:1 → ACCOUNT_REGULATORY_CLASSIFICATION (ORC mapping)
+  ├── 0:1 → FIDUCIARY_ARRANGEMENT (if trust/escrow)
+  ├── 1:N → ACCOUNT_FEATURE (sweeps, POD/TOD, etc.)
+  ├── 1:N → TRANSACTION (all deposits/withdrawals)
+  ├── 1:N → DAILY_ACCOUNT_BALANCE (EOD snapshots)
+  ├── 0:1 → OFFICIAL_ITEMS (if held by custodian)
+  └── 1:N → DEPOSIT_INSURANCE_CALCULATION (coverage records)
+
+ACCOUNT_REGULATORY_CLASSIFICATION (1:1 with ACCOUNT)
+  └── 1:N → DEPOSIT_INSURANCE_CALCULATION (coverage calcs)
+
+FIDUCIARY_ARRANGEMENT (1:1 with ACCOUNT; if account is trust)
+  └── 1:N → FIDUCIARY_BENEFICIARY (one per beneficiary)
+
+ACCOUNT_FEATURE (1:N with ACCOUNT)
+  └── Links to other ACCOUNT (if sweep_linked_account_id)
+  └── Links to PARTY (if POD/TOD beneficiary_party_id)
+
+================================================================================
+SECTION 4: INDEXES & CONSTRAINTS (PERFORMANCE & INTEGRITY)
+================================================================================
+
+PRIMARY KEYS (Mandatory):
+  PARTY.party_id
+  ACCOUNT.account_id
+  ACCOUNT_OWNERSHIP.account_ownership_id
+  ACCOUNT_REGULATORY_CLASSIFICATION.classification_id
+  FIDUCIARY_ARRANGEMENT.fiduciary_id
+  FIDUCIARY_BENEFICIARY.beneficiary_id
+  ACCOUNT_FEATURE.feature_id
+  TRANSACTION.transaction_id
+  DAILY_ACCOUNT_BALANCE.{account_id, balance_as_of_date}
+  OFFICIAL_ITEMS.official_item_id
+  DEPOSIT_INSURANCE_CALCULATION.calculation_id
+  KYC_CIP_VERIFICATION.verification_id
+  GL_DEPOSIT_CONTROL_ACCOUNT.gl_account_id
+
+UNIQUE CONSTRAINTS (Data Integrity):
+  PARTY.individual_ssn (WHERE individual_ssn IS NOT NULL)
+  PARTY.organization_tax_id (WHERE organization_tax_id IS NOT NULL)
+  ACCOUNT.account_number
+  ACCOUNT_OWNERSHIP.{account_id, owner_party_id} (one ownership per account-owner pair)
+  ACCOUNT_REGULATORY_CLASSIFICATION.account_id (1:1 with ACCOUNT)
+  FIDUCIARY_ARRANGEMENT.account_id (at most one trust per account)
+  GL_DEPOSIT_CONTROL_ACCOUNT.{gl_account_number, gl_balance_date}
+
+FOREIGN KEY CONSTRAINTS (Referential Integrity):
+  ACCOUNT.primary_owner_party_id → PARTY.party_id
+  ACCOUNT_OWNERSHIP.account_id → ACCOUNT.account_id
+  ACCOUNT_OWNERSHIP.owner_party_id → PARTY.party_id
+  ACCOUNT_REGULATORY_CLASSIFICATION.account_id → ACCOUNT.account_id
+  FIDUCIARY_ARRANGEMENT.account_id → ACCOUNT.account_id
+  FIDUCIARY_ARRANGEMENT.trustee_party_id → PARTY.party_id
+  FIDUCIARY_ARRANGEMENT.settlor_party_id → PARTY.party_id (optional)
+  FIDUCIARY_BENEFICIARY.fiduciary_id → FIDUCIARY_ARRANGEMENT.fiduciary_id
+  FIDUCIARY_BENEFICIARY.beneficiary_party_id → PARTY.party_id (optional; may be unknown)
+  ACCOUNT_FEATURE.account_id → ACCOUNT.account_id
+  ACCOUNT_FEATURE.sweep_linked_account_id → ACCOUNT.account_id (optional)
+  ACCOUNT_FEATURE.beneficiary_party_id → PARTY.party_id (optional)
+  ACCOUNT_FEATURE.overdraft_linked_account_id → ACCOUNT.account_id (optional)
+  TRANSACTION.account_id → ACCOUNT.account_id
+  TRANSACTION.counterparty_party_id → PARTY.party_id (optional)
+  TRANSACTION.original_transaction_id → TRANSACTION.transaction_id (optional; for reversals)
+  DAILY_ACCOUNT_BALANCE.account_id → ACCOUNT.account_id
+  OFFICIAL_ITEMS.account_id → ACCOUNT.account_id
+  DEPOSIT_INSURANCE_CALCULATION.account_id → ACCOUNT.account_id
+  DEPOSIT_INSURANCE_CALCULATION.classification_id → ACCOUNT_REGULATORY_CLASSIFICATION.classification_id
+  KYC_CIP_VERIFICATION.party_id → PARTY.party_id
+
+CHECK CONSTRAINTS (Domain Validation):
+  ACCOUNT_OWNERSHIP.ownership_percentage_amount BETWEEN 0 AND 100
+  FIDUCIARY_BENEFICIARY.distribution_percentage BETWEEN 0 AND 100
+  ACCOUNT.current_balance ≥ 0
+  ACCOUNT.accrued_interest_not_posted ≥ 0
+  ACCOUNT.interest_rate_percentage BETWEEN 0 AND 99.9999
+  DEPOSIT_INSURANCE_CALCULATION.calculated_insured_amount + calculated_uninsured_amount ≈ input_account_balance
+
+INDEXES (Performance Optimization):
+  
+  High-Priority (Part 370 Controls):
+    ACCOUNT_REGULATORY_CLASSIFICATION.orc_code (A1, A2 controls)
+    ACCOUNT_REGULATORY_CLASSIFICATION.is_joint_ownership (C2 coverage calc)
+    ACCOUNT_REGULATORY_CLASSIFICATION.is_trust (C2 coverage calc)
+    ACCOUNT_REGULATORY_CLASSIFICATION.is_ira (C2 coverage calc)
+    ACCOUNT_REGULATORY_CLASSIFICATION.orc_verification_date (A2 validation)
+    DEPOSIT_INSURANCE_CALCULATION.calculation_date (C2, C3 tests)
+    DEPOSIT_INSURANCE_CALCULATION.calculation_test_result (C3 audit)
+    DAILY_ACCOUNT_BALANCE.balance_as_of_date (B1 reconciliation)
+    DAILY_ACCOUNT_BALANCE.gl_reconciliation_status (B1 reconciliation)
+    KYC_CIP_VERIFICATION.verification_status (A6 CIP)
+    KYC_CIP_VERIFICATION.risk_rating (Risk management)
+    KYC_CIP_VERIFICATION.verification_next_review_date (Compliance monitoring)
+    FIDUCIARY_ARRANGEMENT.document_verification_date (A3, A4 documentation)
+    ACCOUNT_FEATURE.feature_type (D1, D2 sweep validation)
+    OFFICIAL_ITEMS.last_reconciliation_date (E2, E3 third-party data)
+
+  Medium-Priority (Operational):
+    ACCOUNT.account_status
+    ACCOUNT.primary_owner_party_id
+    ACCOUNT.account_open_date
+    ACCOUNT.current_balance_date
+    ACCOUNT_OWNERSHIP.account_id
+    ACCOUNT_OWNERSHIP.owner_party_id
+    ACCOUNT_OWNERSHIP.ownership_end_date
+    TRANSACTION.account_id
+    TRANSACTION.transaction_date
+    TRANSACTION.transaction_date_posted
+    TRANSACTION.transaction_type
+    TRANSACTION.transaction_status
+
+================================================================================
+SECTION 5: REGULATORY MAPPINGS
+================================================================================
+
+FDIC PART 370: RECORDKEEPING FOR TIMELY DEPOSIT INSURANCE DETERMINATION
+----------------------------------------------
+§ 370.1   Purpose & Scope
+          → Applies to IDIs with ≥2M deposit accounts
+          → Data model designed for these requirements
+
+§ 370.3   Information Technology System Requirements
+          → Calculate coverage by ORC: ACCOUNT_REGULATORY_CLASSIFICATION.orc_code
+          → Generate FDIC output files: DEPOSIT_INSURANCE_CALCULATION table
+          → Real-time/near-real-time data: DAILY_ACCOUNT_BALANCE (EOD)
+          → Validate coverage calculation: DEPOSIT_INSURANCE_CALCULATION.calculation_test_result
+
+§ 370.4   Recordkeeping Requirements
+          → Account details: ACCOUNT table
+          → Ownership info: ACCOUNT_OWNERSHIP, ACCOUNT_REGULATORY_CLASSIFICATION
+          → ORC coding: ACCOUNT_REGULATORY_CLASSIFICATION.orc_code
+          → Fiduciary records: FIDUCIARY_ARRANGEMENT, FIDUCIARY_BENEFICIARY
+          → POD/TOD: ACCOUNT_FEATURE
+          → Beneficial owner verification: KYC_CIP_VERIFICATION
+
+§ 370.5   Account Features (Transactional Features)
+          → Sweep accounts: ACCOUNT_FEATURE.feature_type='Sweep_*'
+          → POD/TOD: ACCOUNT_FEATURE.feature_type IN ('POD_PayableOnDeath', 'TOD_TransferOnDeath')
+          → Official Items: OFFICIAL_ITEMS (third-party held deposits)
+
+§ 370.6   Implementation
+          → Compliance deadline: Dec 5, 2019 (for IDIs with ≥2M accounts)
+          → Data model enables timely compliance
+
+§ 370.10  Compliance & Testing
+          → Annual certification: Derived from DEPOSIT_INSURANCE_CALCULATION records
+          → FDIC testing: Validation queries on DEPOSIT_INSURANCE_CALCULATION
+          → Remediation: Exception flags in DEPOSIT_INSURANCE_CALCULATION.calculation_test_error_message
+
+FDIC PART 330: DEPOSIT INSURANCE COVERAGE
+----------------------------------------------
+§ 330.1   Standard Coverage
+          → SMDIA = $250,000
+          → Mapped to: ACCOUNT_REGULATORY_CLASSIFICATION.orc_insured_amount_per_owner
+
+§ 330.10  Coverage Rules by ORC
+          → Single: $250K per owner per bank
+          → Joint: $250K per owner (separate coverage)
+          → IRA: $250K per owner (separate from single)
+          → Trust: $250K per named beneficiary (max 5)
+          → POD/TOD: $250K per designated beneficiary
+
+Implemented via:
+  ACCOUNT_REGULATORY_CLASSIFICATION.orc_code (determines which rule applies)
+  DEPOSIT_INSURANCE_CALCULATION.input_owner_count, beneficiary_count (number of owners/beneficiaries)
+  DEPOSIT_INSURANCE_CALCULATION.calculated_insured_amount (result per Part 330 rules)
+
+FinCEN: KNOW YOUR CUSTOMER / CUSTOMER IDENTIFICATION PROGRAM
+----------------------------------------------
+31 U.S.C. § 5318  Bank Secrecy Act - CIP Requirements
+Implemented via:
+  KYC_CIP_VERIFICATION.cip_verification_method (method used)
+  KYC_CIP_VERIFICATION.identity_verified, identity_verification_date
+  KYC_CIP_VERIFICATION.sanctions_screening_result, pep_status
+  KYC_CIP_VERIFICATION.verification_status (Complete/Pending/Failed)
+  KYC_CIP_VERIFICATION.risk_rating
+
+FDIC GUIDANCE: COMMUNITY REINVESTMENT ACT (CRA)
+----------------------------------------------
+12 CFR Part 345
+Implemented via:
+  ACCOUNT.account_type (Can classify deposits by CRA category)
+  ACCOUNT_REGULATORY_CLASSIFICATION.is_business (business deposits tracked separately)
+  ACCOUNT_REGULATORY_CLASSIFICATION.is_government (government deposits tracked)
+
+================================================================================
+SECTION 6: CONTROL MAPPINGS (PART 370 CONTROLS → DATA COLUMNS)
+================================================================================
+
+CONTROL A1: ORC Assignment at Account Opening
+  Data Elements:
+    ACCOUNT_REGULATORY_CLASSIFICATION.orc_code
+    ACCOUNT_REGULATORY_CLASSIFICATION.orc_determination_date
+    ACCOUNT_REGULATORY_CLASSIFICATION.orc_determination_method
+    ACCOUNT.account_open_date
+  Validation:
+    orc_code NOT NULL
+    orc_determination_date = account_open_date (assigned at opening)
+    orc_determination_method documented
+  Audit Query:
+    SELECT account_id, account_number, orc_code, orc_determination_date
+    FROM account a
+    JOIN account_regulatory_classification arc ON a.account_id = arc.account_id
+    WHERE arc.orc_code IS NULL OR arc.orc_determination_date > CURRENT_DATE;
+
+CONTROL A2: ORC Validation Audit
+  Data Elements:
+    ACCOUNT_REGULATORY_CLASSIFICATION.orc_code
+    ACCOUNT_REGULATORY_CLASSIFICATION.orc_verification_date
+    ACCOUNT_OWNERSHIP (count of owners if Joint)
+    FIDUCIARY_ARRANGEMENT (if Trust)
+  Validation:
+    orc_verification_date ≤ 12 months old
+    If is_joint_ownership=TRUE → ACCOUNT_OWNERSHIP has ≥2 owners
+    If is_trust=TRUE → FIDUCIARY_ARRANGEMENT exists
+  Audit Query:
+    SELECT arc.account_id, arc.orc_code, arc.orc_verification_date,
+           DATEDIFF(CURRENT_DATE, arc.orc_verification_date) as days_since_verification,
+           COUNT(ao.owner_party_id) as owner_count
+    FROM account_regulatory_classification arc
+    LEFT JOIN account_ownership ao ON arc.account_id = ao.account_id
+    WHERE arc.orc_verification_date < CURRENT_DATE - INTERVAL '365 days'
+       OR (arc.is_joint_ownership AND COUNT(ao.owner_party_id) < 2);
+
+CONTROL A3: Fiduciary Documentation
+  Data Elements:
+    FIDUCIARY_ARRANGEMENT.document_file_reference
+    FIDUCIARY_ARRANGEMENT.document_verification_date
+    FIDUCIARY_ARRANGEMENT.latest_amendment_date
+  Validation:
+    document_file_reference NOT NULL
+    document_verification_date ≤ 24 months old
+    latest_amendment_date documented if trust modified
+  Audit Query:
+    SELECT fa.account_id, fa.fiduciary_type, fa.document_verification_date
+    FROM fiduciary_arrangement fa
+    WHERE fa.document_file_reference IS NULL
+       OR fa.document_verification_date < CURRENT_DATE - INTERVAL '730 days';
+
+CONTROL A4: Fiduciary Beneficiary Data
+  Data Elements:
+    FIDUCIARY_BENEFICIARY.distribution_percentage
+    FIDUCIARY_BENEFICIARY.beneficiary_verification_date
+    FIDUCIARY_BENEFICIARY.beneficiary_status
+    FIDUCIARY_BENEFICIARY (count per fiduciary)
+  Validation:
+    SUM(distribution_percentage) per fiduciary ≈ 100%
+    beneficiary_verification_date ≤ 24 months old
+    beneficiary_status tracks active vs. deceased/removed
+  Audit Query:
+    SELECT fa.fiduciary_id, SUM(fb.distribution_percentage) as total_percentage,
+           COUNT(fb.beneficiary_id) as beneficiary_count,
+           MIN(fb.beneficiary_verification_date) as oldest_verification_date
+    FROM fiduciary_arrangement fa
+    LEFT JOIN fiduciary_beneficiary fb ON fa.fiduciary_id = fb.fiduciary_id
+    GROUP BY fa.fiduciary_id
+    HAVING SUM(fb.distribution_percentage) NOT BETWEEN 99 AND 101
+        OR MIN(fb.beneficiary_verification_date) < CURRENT_DATE - INTERVAL '730 days';
+
+CONTROL A5: POD/TOD Designation
+  Data Elements:
+    ACCOUNT_FEATURE.feature_type = 'POD_PayableOnDeath' or 'TOD_TransferOnDeath'
+    ACCOUNT_FEATURE.beneficiary_party_id
+    ACCOUNT_FEATURE.beneficiary_designation_form
+    ACCOUNT_FEATURE.beneficiary_form_on_file
+    ACCOUNT_FEATURE.beneficiary_verification_date
+  Validation:
+    beneficiary_form_on_file = TRUE
+    beneficiary_verification_date ≤ 24 months old
+    beneficiary_party_id references valid PARTY
+  Audit Query:
+    SELECT a.account_id, a.account_number, af.feature_type,
+           af.beneficiary_form_on_file, af.beneficiary_verification_date
+    FROM account a
+    JOIN account_feature af ON a.account_id = af.account_id
+    WHERE af.feature_type IN ('POD_PayableOnDeath', 'TOD_TransferOnDeath')
+      AND (af.beneficiary_form_on_file = FALSE
+           OR af.beneficiary_verification_date < CURRENT_DATE - INTERVAL '730 days'
+           OR af.beneficiary_party_id IS NULL);
+
+CONTROL A6: KYC/CIP Verification
+  Data Elements:
+    KYC_CIP_VERIFICATION.verification_status
+    KYC_CIP_VERIFICATION.cip_verification_method
+    KYC_CIP_VERIFICATION.identity_verified
+    KYC_CIP_VERIFICATION.address_verified
+    KYC_CIP_VERIFICATION.sanctions_screening_result
+    KYC_CIP_VERIFICATION.pep_status
+    KYC_CIP_VERIFICATION.risk_rating
+    KYC_CIP_VERIFICATION.verification_next_review_date
+  Validation:
+    verification_status = 'Complete' (for open accounts)
+    All screening checks completed and documented
+    verification_next_review_date tracked for re-verification
+  Audit Query:
+    SELECT p.party_id, p.individual_ssn, kcv.verification_status,
+           kcv.verification_next_review_date
+    FROM party p
+    JOIN kyc_cip_verification kcv ON p.party_id = kcv.party_id
+    WHERE kcv.verification_status != 'Complete'
+       OR kcv.verification_next_review_date < CURRENT_DATE;
+
+CONTROL B1: Daily Balance Reconciliation
+  Data Elements:
+    DAILY_ACCOUNT_BALANCE.balance_opening_amount
+    DAILY_ACCOUNT_BALANCE.balance_deposits_amount
+    DAILY_ACCOUNT_BALANCE.balance_withdrawals_amount
+    DAILY_ACCOUNT_BALANCE.balance_interest_amount
+    DAILY_ACCOUNT_BALANCE.balance_fees_amount
+    DAILY_ACCOUNT_BALANCE.balance_closing_amount
+    DAILY_ACCOUNT_BALANCE.gl_reconciliation_variance
+    DAILY_ACCOUNT_BALANCE.gl_reconciliation_status
+    GL_DEPOSIT_CONTROL_ACCOUNT.gl_variance
+  Validation:
+    ClosingBalance = OpeningBalance + Deposits - Withdrawals + Interest - Fees (formula)
+    GL_Variance = 0 (or ≤ $0.01)
+    gl_reconciliation_status = 'Reconciled'
+  Audit Query:
+    SELECT dab.account_id, dab.balance_as_of_date,
+           (dab.balance_opening_amount + dab.balance_deposits_amount
+            - dab.balance_withdrawals_amount + dab.balance_interest_amount
+            - dab.balance_fees_amount) as calculated_closing,
+           dab.balance_closing_amount,
+           dab.gl_reconciliation_status
+    FROM daily_account_balance dab
+    WHERE dab.balance_closing_amount != (dab.balance_opening_amount + ...)
+       OR dab.gl_reconciliation_status != 'Reconciled'
+       OR dab.balance_as_of_date < CURRENT_DATE - INTERVAL '1 day';
+
+CONTROL B3: Interest Accrual Validation
+  Data Elements:
+    ACCOUNT.interest_rate_percentage
+    ACCOUNT.interest_calculation_method
+    ACCOUNT.interest_last_accrual_date
+    DAILY_ACCOUNT_BALANCE.interest_accrued_not_posted
+    DAILY_ACCOUNT_BALANCE.balance_interest_amount
+  Validation:
+    Interest calculated per interest_calculation_method
+    interest_last_accrual_date ≤ 30 days old
+    Accrued interest matches formula per method
+  Audit Query:
+    SELECT a.account_id, a.interest_rate_percentage,
+           a.interest_last_accrual_date,
+           DATEDIFF(CURRENT_DATE, a.interest_last_accrual_date) as days_since_accrual,
+           dab.interest_accrued_not_posted
+    FROM account a
+    LEFT JOIN daily_account_balance dab ON a.account_id = dab.account_id
+    WHERE a.interest_last_accrual_date < CURRENT_DATE - INTERVAL '30 days'
+       OR (a.interest_rate_percentage > 0 AND a.interest_last_accrual_date IS NULL);
+
+CONTROL C2: Coverage Calculation Test
+  Data Elements:
+    DEPOSIT_INSURANCE_CALCULATION.input_account_balance
+    DEPOSIT_INSURANCE_CALCULATION.input_owner_count
+    DEPOSIT_INSURANCE_CALCULATION.input_orc
+    DEPOSIT_INSURANCE_CALCULATION.calculated_insured_amount
+    DEPOSIT_INSURANCE_CALCULATION.calculated_uninsured_amount
+    DEPOSIT_INSURANCE_CALCULATION.calculation_test_result
+    DEPOSIT_INSURANCE_CALCULATION.calculation_test_error_message
+  Validation:
+    calculated_insured_amount ≤ $250,000 per owner
+    calculated_insured_amount + calculated_uninsured_amount = input_account_balance
+    Test result = 'Pass' for all test cases
+    Formula: 
+      Single: min(balance, 250K)
+      Joint (2 owners): min(balance, 250K * 2) [e.g., if balance=$400K, insured=$400K, uninsured=$0]
+      Trust (3 beneficiaries): min(balance, 250K * 3) [e.g., if balance=$500K, insured=$500K, uninsured=$0]
+  Audit Query:
+    SELECT dic.calculation_id, dic.account_id,
+           dic.input_account_balance, dic.calculated_insured_amount,
+           dic.calculated_uninsured_amount,
+           dic.input_account_balance - (dic.calculated_insured_amount + dic.calculated_uninsured_amount) as imbalance,
+           dic.calculation_test_result, dic.calculation_test_error_message
+    FROM deposit_insurance_calculation dic
+    WHERE dic.calculation_test_result = 'Fail'
+       OR ABS(dic.calculated_insured_amount + dic.calculated_uninsured_amount - dic.input_account_balance) > 0.01
+       OR dic.calculated_insured_amount > 250000;
+
+CONTROL C3: FDIC Test Readiness
+  Data Elements:
+    DEPOSIT_INSURANCE_CALCULATION.calculation_scenario = 'TestCase'
+    DEPOSIT_INSURANCE_CALCULATION.calculation_test_result
+    DEPOSIT_INSURANCE_CALCULATION.calculation_date (recent)
+  Validation:
+    All test scenarios executed and passed
+    Output files generated in FDIC-required format
+    System ready for FDIC inspection
+  Audit Query:
+    SELECT COUNT(*) as test_case_count,
+           SUM(CASE WHEN calculation_test_result='Pass' THEN 1 ELSE 0 END) as pass_count,
+           SUM(CASE WHEN calculation_test_result='Fail' THEN 1 ELSE 0 END) as fail_count
+    FROM deposit_insurance_calculation
+    WHERE calculation_scenario = 'TestCase'
+      AND calculation_date >= CURRENT_DATE - INTERVAL '30 days';
+
+CONTROL D1: Sweep Account Configuration
+  Data Elements:
+    ACCOUNT_FEATURE.feature_type LIKE 'Sweep%'
+    ACCOUNT_FEATURE.sweep_linked_account_id
+    ACCOUNT_FEATURE.sweep_trigger_amount
+    ACCOUNT_FEATURE.sweep_trigger_type
+    ACCOUNT_FEATURE.sweep_frequency
+    ACCOUNT_FEATURE.sweep_minimum_amount
+    ACCOUNT_FEATURE.feature_status
+  Validation:
+    sweep_linked_account_id references valid ACCOUNT
+    Linked account belongs to same customer (primary_owner_party_id match)
+    Both accounts active
+    No self-referential sweeps
+  Audit Query:
+    SELECT af.account_id, af.sweep_linked_account_id,
+           a1.primary_owner_party_id, a2.primary_owner_party_id,
+           a1.account_status, a2.account_status
+    FROM account_feature af
+    JOIN account a1 ON af.account_id = a1.account_id
+    JOIN account a2 ON af.sweep_linked_account_id = a2.account_id
+    WHERE af.feature_type LIKE 'Sweep%'
+      AND (a1.primary_owner_party_id != a2.primary_owner_party_id
+           OR af.account_id = af.sweep_linked_account_id
+           OR a1.account_status != 'Active'
+           OR a2.account_status != 'Active');
+
+CONTROL D2: Sweep Coverage Calculation Test
+  Data Elements:
+    ACCOUNT_FEATURE.sweep_linked_account_id
+    DEPOSIT_INSURANCE_CALCULATION (for both accounts in sweep pair)
+    Coverage for sweep pair must account for potential transfers
+  Validation:
+    Sweep transaction executed; balances adjusted in both accounts
+    Coverage recalculated; should remain correct after sweep
+  Audit Query:
+    SELECT af.account_id, af.sweep_linked_account_id,
+           dic1.calculated_insured_amount as source_insured,
+           dic2.calculated_insured_amount as target_insured,
+           dic1.calculated_insured_amount + dic2.calculated_insured_amount as combined_insured
+    FROM account_feature af
+    JOIN deposit_insurance_calculation dic1 ON af.account_id = dic1.account_id
+    JOIN deposit_insurance_calculation dic2 ON af.sweep_linked_account_id = dic2.account_id
+    WHERE af.feature_type LIKE 'Sweep%'
+      AND dic1.calculation_date = dic2.calculation_date;
+
+CONTROL E2: Third-Party Data Receipt & Validation
+  Data Elements:
+    OFFICIAL_ITEMS.custodian_balance
+    OFFICIAL_ITEMS.our_record_balance
+    OFFICIAL_ITEMS.last_reconciliation_date
+    OFFICIAL_ITEMS.data_refresh_frequency
+    OFFICIAL_ITEMS.last_data_refresh_date
+  Validation:
+    Data received per SLA (monthly, daily, etc.)
+    last_data_refresh_date ≤ agreed frequency
+    data_agreement_on_file = TRUE
+  Audit Query:
+    SELECT oi.official_item_id, oi.account_id, oi.custodian_name,
+           oi.data_refresh_frequency, oi.last_data_refresh_date,
+           DATEDIFF(CURRENT_DATE, oi.last_data_refresh_date) as days_since_refresh
+    FROM official_items oi
+    WHERE (oi.data_refresh_frequency = 'Daily' AND oi.last_data_refresh_date < CURRENT_DATE)
+       OR (oi.data_refresh_frequency = 'Monthly' AND oi.last_data_refresh_date < CURRENT_DATE - INTERVAL '35 days')
+       OR oi.data_agreement_on_file = FALSE;
+
+CONTROL E3: Third-Party Data Reconciliation
+  Data Elements:
+    OFFICIAL_ITEMS.custodian_balance
+    OFFICIAL_ITEMS.our_record_balance
+    OFFICIAL_ITEMS.reconciliation_variance
+    OFFICIAL_ITEMS.variance_resolved_date
+    OFFICIAL_ITEMS.last_reconciliation_date
+  Validation:
+    reconciliation_variance ≤ $1 (or = 0)
+    If variance ≠ 0 → variance_resolved_date ≤ 10 business days
+    last_reconciliation_date ≤ 30 days old
+  Audit Query:
+    SELECT oi.official_item_id, oi.account_id,
+           oi.custodian_balance, oi.our_record_balance,
+           ABS(oi.custodian_balance - oi.our_record_balance) as variance,
+           oi.last_reconciliation_date,
+           DATEDIFF(CURRENT_DATE, oi.last_reconciliation_date) as days_since_recon
+    FROM official_items oi
+    WHERE ABS(oi.custodian_balance - oi.our_record_balance) > 1
+       OR oi.last_reconciliation_date < CURRENT_DATE - INTERVAL '30 days'
+       OR (oi.reconciliation_variance != 0 AND oi.variance_resolved_date IS NULL);
+
+CONTROL F1: Uncalculable Coverage Identification
+  Data Elements:
+    ACCOUNT (accounts without matching DEPOSIT_INSURANCE_CALCULATION)
+    DEPOSIT_INSURANCE_CALCULATION.calculation_test_result = 'Exception'
+  Validation:
+    All accounts have coverage calculation
+    No 'Exception' or 'Manual' test results
+  Audit Query:
+    SELECT a.account_id, a.account_number
+    FROM account a
+    WHERE a.account_status IN ('Active', 'Dormant')
+      AND NOT EXISTS (
+        SELECT 1 FROM deposit_insurance_calculation dic
+        WHERE dic.account_id = a.account_id
+          AND dic.calculation_date >= CURRENT_DATE - INTERVAL '1 day'
+      );
+
+CONTROL G1: Annual Compliance Certification
+  Data Elements:
+    DEPOSIT_INSURANCE_CALCULATION (all records for year)
+    Summary reports derived from DIC records
+    CFO signature/approval
+  Validation:
+    Certificate submitted within SLA (typically Feb 28 or per FDIC deadline)
+    All required data elements present
+    Coverage calculations audited
+  Audit Query:
+    SELECT COUNT(DISTINCT account_id) as account_count,
+           COUNT(CASE WHEN calculation_test_result='Pass' THEN 1 END) as passed_calcs,
+           COUNT(CASE WHEN calculation_test_result='Fail' THEN 1 END) as failed_calcs,
+           SUM(calculated_insured_amount) as total_insured,
+           SUM(calculated_uninsured_amount) as total_uninsured,
+           MAX(calculation_date) as last_calculation_date
+    FROM deposit_insurance_calculation
+    WHERE calculation_date >= CAST(CURRENT_DATE - INTERVAL '365 days' AS DATE)
+    GROUP BY EXTRACT(YEAR FROM calculation_date);
+
+CONTROL H1: Part 370 Roles & Responsibilities
+  Data Elements:
+    (Meta: RACI matrix, not stored in database; reference in documentation)
+  Documentation:
+    - CFO: Annual certification sign-off
+    - CIO: System design, coverage calculation, output file generation
+    - Compliance Officer: Oversight, FDIC communication
+    - Deposit Operations: Account data accuracy, ORC assignment
+    - Internal Audit: Annual testing and validation
+
+CONTROL H2: Internal Audit Coverage
+  Data Elements:
+    All tables (audit trail via created_by, modified_by fields)
+    Audit logs optional (AUDIT_LOG table)
+  Validation:
+    Audit plan includes Part 370
+    Test results documented
+    Findings tracked to closure
+  Audit Query:
+    SELECT table_name, COUNT(*) as change_count,
+           MIN(changed_date) as first_change,
+           MAX(changed_date) as last_change,
+           COUNT(DISTINCT changed_by) as user_count
+    FROM audit_log
+    WHERE changed_date >= CURRENT_DATE - INTERVAL '365 days'
+    GROUP BY table_name;
+
+CONTROL H3: Management Reporting
+  Data Elements:
+    DEPOSIT_INSURANCE_CALCULATION (compliance metrics)
+    KYC_CIP_VERIFICATION (risk ratings)
+    DAILY_ACCOUNT_BALANCE (reconciliation status)
+    OFFICIAL_ITEMS (third-party reconciliation)
+  Reports (Quarterly):
+    - ORC accuracy rate
+    - Coverage calculation status
+    - FDIC test readiness
+    - Open exceptions
+    - Risk rating distribution
+
+================================================================================
+SECTION 7: COMMON AUDIT QUERIES
+================================================================================
+
+Query 1: ORC Accuracy Audit (Control A1/A2)
+------
+SELECT
+  arc.account_id,
+  a.account_number,
+  arc.orc_code,
+  COUNT(ao.owner_party_id) as active_owner_count,
+  CASE
+    WHEN arc.is_joint_ownership AND COUNT(ao.owner_party_id) < 2 THEN 'FAIL: Joint but <2 owners'
+    WHEN arc.is_trust AND NOT EXISTS(SELECT 1 FROM fiduciary_arrangement fa WHERE fa.account_id = a.account_id) THEN 'FAIL: Trust but no fiduciary record'
+    WHEN DATEDIFF(CURRENT_DATE, arc.orc_verification_date) > 365 THEN 'FAIL: ORC verification >12 months old'
+    ELSE 'PASS'
+  END as validation_result
+FROM account a
+JOIN account_regulatory_classification arc ON a.account_id = arc.account_id
+LEFT JOIN account_ownership ao ON a.account_id = ao.account_id AND ao.ownership_end_date IS NULL
+WHERE a.account_status IN ('Active', 'Dormant')
+GROUP BY arc.account_id
+HAVING validation_result LIKE 'FAIL%';
+
+Query 2: GL Reconciliation (Control B1)
+------
+SELECT
+  a.account_id,
+  a.account_number,
+  dab.balance_as_of_date,
+  dab.balance_closing_amount,
+  dab.gl_reconciliation_variance,
+  dab.gl_reconciliation_status
+FROM account a
+LEFT JOIN daily_account_balance dab ON a.account_id = dab.account_id
+WHERE dab.balance_as_of_date = CURRENT_DATE - INTERVAL '1 day'
+  AND (dab.gl_reconciliation_status != 'Reconciled'
+       OR ABS(dab.gl_reconciliation_variance) > 0.01
+       OR dab.balance_as_of_date IS NULL);
+
+Query 3: Coverage Calculation Status (Control C2)
+------
+SELECT
+  arc.orc_code,
+  COUNT(DISTINCT dic.account_id) as account_count,
+  SUM(CASE WHEN dic.calculation_test_result = 'Pass' THEN 1 ELSE 0 END) as passed,
+  SUM(CASE WHEN dic.calculation_test_result = 'Fail' THEN 1 ELSE 0 END) as failed,
+  SUM(dic.calculated_insured_amount) as total_insured,
+  SUM(dic.calculated_uninsured_amount) as total_uninsured,
+  CAST(SUM(dic.calculated_insured_amount) / SUM(dic.input_account_balance) * 100 AS DECIMAL(5,2)) as coverage_percentage
+FROM account_regulatory_classification arc
+JOIN deposit_insurance_calculation dic ON arc.account_id = dic.account_id
+WHERE dic.calculation_date = CURRENT_DATE - INTERVAL '1 day'
+GROUP BY arc.orc_code
+ORDER BY total_insured DESC;
+
+Query 4: Uninsured Deposit Exposure
+------
+SELECT
+  a.account_id,
+  a.account_number,
+  a.current_balance,
+  dic.calculated_insured_amount,
+  dic.calculated_uninsured_amount,
+  CAST(dic.calculated_uninsured_amount / a.current_balance * 100 AS DECIMAL(5,2)) as uninsured_percentage
+FROM account a
+JOIN account_regulatory_classification arc ON a.account_id = arc.account_id
+JOIN deposit_insurance_calculation dic ON a.account_id = dic.account_id
+WHERE a.account_status = 'Active'
+  AND dic.calculated_uninsured_amount > 0
+  AND dic.calculation_date = CURRENT_DATE - INTERVAL '1 day'
+ORDER BY dic.calculated_uninsured_amount DESC;
+
+Query 5: POD/TOD Designation Audit (Control A5)
+------
+SELECT
+  a.account_id,
+  a.account_number,
+  af.feature_type,
+  p.individual_name_family as beneficiary_name,
+  af.beneficiary_form_on_file,
+  af.beneficiary_verification_date,
+  DATEDIFF(CURRENT_DATE, af.beneficiary_verification_date) as days_since_verification,
+  CASE
+    WHEN af.beneficiary_form_on_file = FALSE THEN 'FAIL: Form not on file'
+    WHEN DATEDIFF(CURRENT_DATE, af.beneficiary_verification_date) > 730 THEN 'FAIL: Verification >24 months old'
+    WHEN af.beneficiary_party_id IS NULL THEN 'FAIL: No beneficiary party'
+    ELSE 'PASS'
+  END as validation_result
+FROM account a
+JOIN account_feature af ON a.account_id = af.account_id
+LEFT JOIN party p ON af.beneficiary_party_id = p.party_id
+WHERE af.feature_type IN ('POD_PayableOnDeath', 'TOD_TransferOnDeath')
+  AND af.feature_status = 'Active';
+
+Query 6: Fiduciary Account Audit (Control A3/A4)
+------
+SELECT
+  fa.account_id,
+  fa.fiduciary_type,
+  fa.document_verification_date,
+  COUNT(fb.beneficiary_id) as beneficiary_count,
+  SUM(fb.distribution_percentage) as distribution_total,
+  MIN(fb.beneficiary_verification_date) as oldest_beneficiary_verification,
+  CASE
+    WHEN fa.document_file_reference IS NULL THEN 'FAIL: No document file'
+    WHEN DATEDIFF(CURRENT_DATE, fa.document_verification_date) > 730 THEN 'FAIL: Doc verification >24 months'
+    WHEN SUM(fb.distribution_percentage) NOT BETWEEN 99 AND 101 THEN 'FAIL: Distribution % not ~100'
+    WHEN MIN(fb.beneficiary_verification_date) < CURRENT_DATE - INTERVAL '730 days' THEN 'FAIL: Beneficiary verification stale'
+    ELSE 'PASS'
+  END as validation_result
+FROM fiduciary_arrangement fa
+LEFT JOIN fiduciary_beneficiary fb ON fa.fiduciary_id = fb.fiduciary_id
+GROUP BY fa.fiduciary_id;
+
+Query 7: Official Items Reconciliation (Control E2/E3)
+------
+SELECT
+  oi.official_item_id,
+  oi.account_id,
+  oi.custodian_name,
+  oi.custodian_balance,
+  oi.our_record_balance,
+  ABS(oi.custodian_balance - oi.our_record_balance) as variance,
+  oi.last_reconciliation_date,
+  DATEDIFF(CURRENT_DATE, oi.last_reconciliation_date) as days_since_recon,
+  CASE
+    WHEN ABS(oi.custodian_balance - oi.our_record_balance) > 1 THEN 'FAIL: Variance >$1'
+    WHEN DATEDIFF(CURRENT_DATE, oi.last_reconciliation_date) > 30 THEN 'FAIL: Reconciliation overdue'
+    WHEN oi.reconciliation_variance != 0 AND oi.variance_resolved_date IS NULL THEN 'FAIL: Unresolved variance'
+    ELSE 'PASS'
+  END as validation_result
+FROM official_items oi;
+
+Query 8: KYC/CIP Verification Status (Control A6)
+------
+SELECT
+  kcv.verification_status,
+  kcv.risk_rating,
+  COUNT(DISTINCT kcv.party_id) as party_count,
+  MAX(kcv.verification_status_date) as last_update
+FROM kyc_cip_verification kcv
+WHERE kcv.verification_program_type = 'CIP'
+GROUP BY kcv.verification_status, kcv.risk_rating
+ORDER BY party_count DESC;
+
+Query 9: Overdue Re-verification Alert
+------
+SELECT
+  p.party_id,
+  p.individual_ssn,
+  p.organization_tax_id,
+  kcv.verification_next_review_date,
+  DATEDIFF(CURRENT_DATE, kcv.verification_next_review_date) as days_overdue
+FROM party p
+JOIN kyc_cip_verification kcv ON p.party_id = kcv.party_id
+WHERE kcv.verification_next_review_date < CURRENT_DATE
+ORDER BY kcv.verification_next_review_date ASC;
+
+Query 10: Compliance Certification Summary (Control G1)
+------
+SELECT
+  EXTRACT(YEAR FROM dic.calculation_date) as report_year,
+  COUNT(DISTINCT dic.account_id) as account_count,
+  COUNT(DISTINCT arc.orc_code) as orc_type_count,
+  SUM(CASE WHEN arc.is_joint_ownership THEN 1 ELSE 0 END) as joint_account_count,
+  SUM(CASE WHEN arc.is_trust THEN 1 ELSE 0 END) as trust_account_count,
+  SUM(CASE WHEN arc.is_ira THEN 1 ELSE 0 END) as ira_account_count,
+  SUM(dic.calculated_insured_amount) as total_insured_deposits,
+  SUM(dic.calculated_uninsured_amount) as total_uninsured_deposits,
+  SUM(dic.input_account_balance) as total_deposits,
+  COUNT(CASE WHEN dic.calculation_test_result = 'Pass' THEN 1 END) as test_passes,
+  COUNT(CASE WHEN dic.calculation_test_result = 'Fail' THEN 1 END) as test_failures
+FROM deposit_insurance_calculation dic
+JOIN account_regulatory_classification arc ON dic.account_id = arc.account_id
+WHERE EXTRACT(YEAR FROM dic.calculation_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+GROUP BY EXTRACT(YEAR FROM dic.calculation_date);
+
+================================================================================
+SECTION 8: APPENDICES
+================================================================================
+
+APPENDIX A: SAMPLE DATA INSERTS
+------
+-- Insert an individual party
+INSERT INTO party (party_id, party_type, individual_name_given, individual_name_family,
+                   individual_date_of_birth, individual_ssn, individual_gender,
+                   address_city, address_state_province, address_postal_code, address_country,
+                   address_is_usa, party_status, created_date, created_by)
+VALUES (
+  gen_random_uuid(),
+  'Individual'::party_type_enum,
+  'John',
+  'Smith',
+  '1970-05-15'::DATE,
+  '123456789',
+  'M'::gender_enum,
+  'New York',
+  'NY',
+  '10001',
+  'US',
+  TRUE,
+  'Active'::party_status_enum,
+  CURRENT_TIMESTAMP,
+  'admin@bank.com'
+);
+
+-- Insert a savings account for that party
+INSERT INTO account (account_id, account_number, account_status, account_type,
+                     account_open_date, primary_owner_party_id, interest_rate_percentage,
+                     interest_calculation_method, current_balance, current_balance_date,
+                     created_date, created_by)
+VALUES (
+  gen_random_uuid(),
+  '0123456789',
+  'Active'::account_status_enum,
+  'Savings'::account_type_enum,
+  CURRENT_DATE,
+  (SELECT party_id FROM party WHERE individual_ssn = '123456789' LIMIT 1),
+  1.25::NUMERIC,
+  'Daily'::interest_calc_method_enum,
+  5000.00::NUMERIC,
+  CURRENT_DATE - INTERVAL '1 day',
+  CURRENT_TIMESTAMP,
+  'admin@bank.com'
+);
+
+-- Insert ORC classification (Single account)
+INSERT INTO account_regulatory_classification (classification_id, account_id, orc_code,
+                                               orc_determination_date, orc_determination_method,
+                                               orc_verification_date, is_joint_ownership,
+                                               is_ira, is_trust, created_date, created_by)
+VALUES (
+  gen_random_uuid(),
+  (SELECT account_id FROM account WHERE account_number = '0123456789' LIMIT 1),
+  'Single'::orc_code_enum,
+  CURRENT_DATE,
+  'RegistrationForm'::orc_determination_method_enum,
+  CURRENT_DATE,
+  FALSE,
+  FALSE,
+  FALSE,
+  CURRENT_TIMESTAMP,
+  'admin@bank.com'
+);
+
+APPENDIX B: GLOSSARY
+------
+SMDIA
+  Standard Maximum Deposit Insurance Amount
+  Currently $250,000 per depositor per ORC per institution
+  Set by Congress; last changed to $250K in 2010
+
+ORC
+  Ownership Right & Capacity
+  Classification of how account is held (single, joint, trust, IRA, etc.)
+  Determines FDIC deposit insurance coverage per Part 330
+
+EOD / End-of-Day
+  Close of business day (typically 5:00 PM ET)
+  When daily account balances are calculated and reconciled
+
+CIP / Customer Identification Program
+  Regulatory requirement per FinCEN (31 U.S.C. § 5318)
+  Bank must verify identity of customers before opening accounts
+
+KYC / Know Your Customer
+  Broader compliance program; includes CIP plus ongoing monitoring
+  Helps prevent money laundering, terrorism financing, etc.
+
+PEP
+  Politically Exposed Person
+  Person holding/related to public office; higher-risk classification
+
+OFAC
+  Office of Foreign Assets Control (US Treasury)
+  Maintains sanctions list; banks must screen customers/transactions
+
+GL / General Ledger
+  Master accounting records; ultimate source of truth for bank balances
+
+POD / Payable-on-Death
+  Account designation; beneficiary receives funds upon account holder's death
+
+TOD / Transfer-on-Death
+  Similar to POD; state-law mechanism for designated account transfer
+
+IDI
+  Insured Depository Institution
+  Bank, savings bank, or credit union that accepts FDIC insurance
+
+Sweep Account
+  Automatic transfer of funds between linked accounts
+  Typically used to move excess to money market or savings for higher interest
+
+Regulation D
+  Fed regulation limiting certain types of account withdrawals
+  "6 withdrawals per month" rule for savings accounts (may be waived)
+
+Regulation CC
+  Fed regulation defining when deposits must be available
+  Requires timely availability of deposited funds
+
+================================================================================
+END OF DATA DICTIONARY
+================================================================================
+
+Document Prepared: 2026-02-02
+For: Risk & Controls Expert, Retail Banking
+Database: PostgreSQL 14+
+Version: 1.0
+
+Please refer to the companion DDL script (01_ATOMIC_DEPOSIT_SYSTEM_DDL.sql)
+for complete PostgreSQL implementation details.
+
+For questions or clarifications, contact: [Risk Management]
