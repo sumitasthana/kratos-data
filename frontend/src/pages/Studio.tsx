@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ContextForm } from '../components/forms/ContextForm';
 
 type TabName = 'Chat' | 'Schema' | 'Profile' | 'Rules' | 'Output' | 'Validation' | 'Logs';
 
@@ -43,7 +44,7 @@ export function Studio(): JSX.Element {
 
         {/* Context Form Area */}
         <div className="flex-1 p-6 border-b border-gray-200 overflow-y-auto">
-          <div className="text-gray-600">Context Form — Phase 3</div>
+          <ContextForm />
         </div>
 
         {/* Chat Terminal Area */}
