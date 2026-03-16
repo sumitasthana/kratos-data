@@ -6,8 +6,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 
 
-class SeedAgentPhaseA:
-    """Deterministic skeleton builder for synthetic data generation."""
+class DistributionSpecSkeletonBuilder:
+    """Deterministic skeleton builder for synthetic data generation.
+    
+    Phase A of the Seed Agent pipeline. Reads schema_graph.json and optionally
+    domain_supplements.json, then deterministically resolves table classifications
+    and field strategies, writing distribution_spec_skeleton.json for Phase B LLM processing.
+    """
 
     def __init__(self, schema_graph_path: str, supplements_path: Optional[str] = None):
         self.schema_graph_path = schema_graph_path
@@ -367,15 +372,15 @@ class SeedAgentPhaseA:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Seed Agent Phase A: Deterministic Skeleton Builder')
+    parser = argparse.ArgumentParser(description='Distribution Spec Skeleton Builder (Seed Agent Phase A)')
     parser.add_argument('schema_graph', help='Path to schema_graph.json')
     parser.add_argument('--supplements', help='Path to domain_supplements.json (optional)')
     parser.add_argument('--output', default='distribution_spec_skeleton.json', help='Output path')
 
     args = parser.parse_args()
 
-    agent = SeedAgentPhaseA(args.schema_graph, args.supplements)
-    agent.run(args.output)
+    builder = DistributionSpecSkeletonBuilder(args.schema_graph, args.supplements)
+    builder.run(args.output)
 
 
 if __name__ == '__main__':
