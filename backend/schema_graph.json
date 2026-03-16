@@ -855,7 +855,29 @@
           "default": null
         }
       ],
-      "conditional_groups": [],
+      "conditional_groups": [
+        {
+          "condition_field": "account_status",
+          "condition_value": "closed",
+          "fields": [
+            "account_close_date"
+          ]
+        },
+        {
+          "condition_field": "account_type",
+          "condition_value": "interest_bearing",
+          "fields": [
+            "interest_rate_percentage",
+            "interest_rate_effective_date",
+            "interest_rate_expiry_date",
+            "interest_calculation_method",
+            "interest_compounding_freq",
+            "interest_calculation_basis",
+            "interest_last_accrual_date",
+            "accrued_interest_not_posted"
+          ]
+        }
+      ],
       "check_constraints": [
         {
           "name": "ck_account_balance_non_negative",
@@ -1060,7 +1082,48 @@
           "default": "CURRENT_TIMESTAMP"
         }
       ],
-      "conditional_groups": [],
+      "conditional_groups": [
+        {
+          "condition_field": "feature_type",
+          "condition_value": "sweep",
+          "fields": [
+            "sweep_linked_account_id",
+            "sweep_trigger_amount",
+            "sweep_trigger_type",
+            "sweep_frequency",
+            "sweep_direction",
+            "sweep_minimum_amount"
+          ]
+        },
+        {
+          "condition_field": "feature_type",
+          "condition_value": "beneficiary",
+          "fields": [
+            "beneficiary_party_id",
+            "beneficiary_designation_date",
+            "beneficiary_designation_form",
+            "beneficiary_form_on_file",
+            "beneficiary_verification_date"
+          ]
+        },
+        {
+          "condition_field": "feature_type",
+          "condition_value": "overdraft",
+          "fields": [
+            "overdraft_linked_account_id",
+            "overdraft_max_amount",
+            "overdraft_fee_per_transaction"
+          ]
+        },
+        {
+          "condition_field": "feature_status",
+          "condition_value": "terminated",
+          "fields": [
+            "feature_end_date",
+            "feature_termination_reason"
+          ]
+        }
+      ],
       "check_constraints": [],
       "unique_constraints": [],
       "foreign_keys": [
@@ -1188,7 +1251,16 @@
           "default": "CURRENT_TIMESTAMP"
         }
       ],
-      "conditional_groups": [],
+      "conditional_groups": [
+        {
+          "condition_field": "ownership_role",
+          "condition_value": "terminated",
+          "fields": [
+            "ownership_end_date",
+            "ownership_end_reason"
+          ]
+        }
+      ],
       "check_constraints": [
         {
           "name": "ck_ownership_percentage",
@@ -1952,7 +2024,22 @@
           "default": "CURRENT_TIMESTAMP"
         }
       ],
-      "conditional_groups": [],
+      "conditional_groups": [
+        {
+          "condition_field": "fiduciary_type",
+          "condition_value": "trust",
+          "fields": [
+            "trustee_party_id",
+            "trustee_designated_date",
+            "trustee_is_successor",
+            "settlor_party_id",
+            "settlor_is_deceased",
+            "latest_amendment_date",
+            "latest_amendment_number",
+            "amendment_file_reference"
+          ]
+        }
+      ],
       "check_constraints": [],
       "unique_constraints": [],
       "foreign_keys": [
@@ -2097,7 +2184,15 @@
           "default": "CURRENT_TIMESTAMP"
         }
       ],
-      "conditional_groups": [],
+      "conditional_groups": [
+        {
+          "condition_field": "beneficiary_party_is_unknown",
+          "condition_value": "true",
+          "fields": [
+            "beneficiary_identifier_text"
+          ]
+        }
+      ],
       "check_constraints": [
         {
           "name": "ck_distribution_percentage",
@@ -2435,7 +2530,64 @@
           "default": null
         }
       ],
-      "conditional_groups": [],
+      "conditional_groups": [
+        {
+          "condition_field": "identity_verified",
+          "condition_value": "true",
+          "fields": [
+            "identity_verification_date",
+            "identity_verification_score",
+            "identity_document_1_type",
+            "identity_document_1_number",
+            "identity_document_1_expiry_date",
+            "identity_document_1_file_ref",
+            "identity_document_2_type",
+            "identity_document_2_number"
+          ]
+        },
+        {
+          "condition_field": "address_verified",
+          "condition_value": "true",
+          "fields": [
+            "address_verification_date",
+            "address_verification_method",
+            "address_verification_source"
+          ]
+        },
+        {
+          "condition_field": "sanctions_screening_performed",
+          "condition_value": "true",
+          "fields": [
+            "sanctions_screening_date",
+            "sanctions_screening_database",
+            "sanctions_screening_result",
+            "sanctions_screening_hit_details"
+          ]
+        },
+        {
+          "condition_field": "pep_screening_performed",
+          "condition_value": "true",
+          "fields": [
+            "pep_screening_date",
+            "pep_status"
+          ]
+        },
+        {
+          "condition_field": "adverse_media_screening_performed",
+          "condition_value": "true",
+          "fields": [
+            "adverse_media_screening_date",
+            "adverse_media_screening_result"
+          ]
+        },
+        {
+          "condition_field": "beneficial_owner_identified",
+          "condition_value": "true",
+          "fields": [
+            "beneficial_owner_verification_date"
+          ]
+        }
+      ],
       "check_constraints": [],
       "unique_constraints": [
         {
@@ -2762,7 +2914,38 @@
           "default": "CURRENT_TIMESTAMP"
         }
       ],
-      "conditional_groups": [],
+      "conditional_groups": [
+        {
+          "condition_field": "transaction_type",
+          "condition_value": "check",
+          "fields": [
+            "check_number"
+          ]
+        },
+        {
+          "condition_field": "transaction_type",
+          "condition_value": "ach",
+          "fields": [
+            "ach_trace_number"
+          ]
+        },
+        {
+          "condition_field": "transaction_type",
+          "condition_value": "wire",
+          "fields": [
+            "wire_reference"
+          ]
+        },
+        {
+          "condition_field": "transaction_status",
+          "condition_value": "reversed",
+          "fields": [
+            "original_transaction_id",
+            "reversal_reason",
+            "reversal_date"
+          ]
+        }
+      ],
       "check_constraints": [],
       "unique_constraints": [],
       "foreign_keys": [
@@ -3308,7 +3491,5 @@
     "official_items": "Depends on: account",
     "transaction": "Depends on: account, party; Self-referencing: original_transaction_id"
   },
-  "warnings": [
-    "LLM conditional group detection unavailable: Anthropic API error: Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CZ74i7xGn54hsjz9qpyVU'}"
-  ]
+  "warnings": []
 }
