@@ -1,348 +1,26 @@
 {
   "tables": [
     {
-      "name": "account",
-      "primary_key": "",
-      "pk_type": "",
-      "columns": [
-        {
-          "name": "account_status",
-          "type": "account_status_enum",
-          "enum_name": "account_status_enum",
-          "nullable": false,
-          "default": "'Active'"
-        },
-        {
-          "name": "account_type",
-          "type": "account_type_enum",
-          "enum_name": "account_type_enum",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "account_open_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "account_close_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "interest_rate_percentage",
-          "type": "NUMERIC(6, 4)",
-          "enum_name": null,
-          "nullable": false,
-          "default": "0.0000"
-        },
-        {
-          "name": "interest_rate_effective_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_DATE"
-        },
-        {
-          "name": "interest_rate_expiry_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "interest_calculation_method",
-          "type": "interest_calc_method_enum",
-          "enum_name": "interest_calc_method_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "interest_compounding_freq",
-          "type": "interest_compound_freq_enum",
-          "enum_name": "interest_compound_freq_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "interest_calculation_basis",
-          "type": "interest_basis_enum",
-          "enum_name": "interest_basis_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "interest_last_accrual_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "current_balance",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": false,
-          "default": "0.00"
-        },
-        {
-          "name": "current_balance_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "accrued_interest_not_posted",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": false,
-          "default": "0.00"
-        },
-        {
-          "name": "minimum_balance",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": false,
-          "default": "0.00"
-        },
-        {
-          "name": "maximum_balance",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "transaction_daily_withdrawal_limit",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "transaction_monthly_withdrawal_limit",
-          "type": "INT",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "created_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "created_by",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "modified_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "modified_by",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        }
-      ],
-      "conditional_groups": [],
-      "check_constraints": [
-        {
-          "name": "ck_account_balance_non_negative",
-          "expression": "current_balance >= 0"
-        },
-        {
-          "name": "ck_account_accrued_interest_non_negative",
-          "expression": "accrued_interest_not_posted >= 0"
-        }
-      ],
-      "unique_constraints": [],
-      "foreign_keys": [],
-      "referenced_by": [
-        "account_ownership",
-        "account_feature",
-        "transaction",
-        "daily_account_balance",
-        "official_items",
-        "deposit_insurance_calculation"
-      ]
-    },
-    {
-      "name": "account_regulatory_classification",
-      "primary_key": "",
-      "pk_type": "",
-      "columns": [
-        {
-          "name": "orc_code",
-          "type": "orc_code_enum",
-          "enum_name": "orc_code_enum",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "orc_insured_amount_per_owner",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": false,
-          "default": "250000.00"
-        },
-        {
-          "name": "orc_insurance_category",
-          "type": "insurance_category_enum",
-          "enum_name": "insurance_category_enum",
-          "nullable": true,
-          "default": "'Covered'"
-        },
-        {
-          "name": "orc_determination_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_DATE"
-        },
-        {
-          "name": "orc_determination_method",
-          "type": "orc_determination_method_enum",
-          "enum_name": "orc_determination_method_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "orc_verification_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "orc_change_reason",
-          "type": "VARCHAR(255)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "orc_change_prior_code",
-          "type": "orc_code_enum",
-          "enum_name": "orc_code_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "orc_change_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "is_joint_ownership",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": false,
-          "default": "FALSE"
-        },
-        {
-          "name": "is_ira",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": false,
-          "default": "FALSE"
-        },
-        {
-          "name": "is_keogh",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": false,
-          "default": "FALSE"
-        },
-        {
-          "name": "is_trust",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": false,
-          "default": "FALSE"
-        },
-        {
-          "name": "is_government",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": false,
-          "default": "FALSE"
-        },
-        {
-          "name": "is_business",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": false,
-          "default": "FALSE"
-        },
-        {
-          "name": "is_payable_on_death",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": false,
-          "default": "FALSE"
-        },
-        {
-          "name": "is_transfer_on_death",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": false,
-          "default": "FALSE"
-        },
-        {
-          "name": "created_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "created_by",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "modified_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      ],
-      "conditional_groups": [],
-      "check_constraints": [],
-      "unique_constraints": [],
-      "foreign_keys": [],
-      "referenced_by": [
-        "deposit_insurance_calculation"
-      ]
-    },
-    {
       "name": "audit_log",
-      "primary_key": "",
-      "pk_type": "",
+      "primary_key": "audit_log_id",
+      "pk_type": "simple",
       "columns": [
+        {
+          "name": "audit_log_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
         {
           "name": "table_name",
+          "type": "VARCHAR(100)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "primary_key_value",
           "type": "VARCHAR(100)",
           "enum_name": null,
           "nullable": false,
@@ -580,6 +258,1144 @@
       "referenced_by": []
     },
     {
+      "name": "gl_deposit_control_account",
+      "primary_key": "gl_account_id",
+      "pk_type": "simple",
+      "columns": [
+        {
+          "name": "gl_account_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "gl_account_number",
+          "type": "VARCHAR(20)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "gl_balance_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "gl_total_deposit_balance",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "gl_control_total_per_core_system",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "gl_variance",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": false,
+          "default": "0.00"
+        },
+        {
+          "name": "gl_reconciliation_status",
+          "type": "gl_reconciliation_status_enum",
+          "enum_name": "gl_reconciliation_status_enum",
+          "nullable": false,
+          "default": "'Pending'"
+        },
+        {
+          "name": "gl_reconciliation_approved_by",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "gl_reconciliation_approved_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "created_by",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "modified_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      ],
+      "conditional_groups": [],
+      "check_constraints": [],
+      "unique_constraints": [
+        {
+          "fields": [
+            "gl_account_number",
+            "gl_balance_date"
+          ],
+          "condition": null
+        }
+      ],
+      "foreign_keys": [],
+      "referenced_by": []
+    },
+    {
+      "name": "party",
+      "primary_key": "party_id",
+      "pk_type": "simple",
+      "columns": [
+        {
+          "name": "party_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "party_type",
+          "type": "party_type_enum",
+          "enum_name": "party_type_enum",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "individual_name_given",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "individual_name_middle",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "individual_name_family",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "individual_name_suffix",
+          "type": "VARCHAR(20)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "individual_date_of_birth",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "individual_ssn",
+          "type": "CHAR(9)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "individual_country_of_birth",
+          "type": "CHAR(2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "individual_gender",
+          "type": "gender_enum",
+          "enum_name": "gender_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "organization_legal_name",
+          "type": "VARCHAR(255)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "organization_tax_id",
+          "type": "VARCHAR(20)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "organization_type",
+          "type": "organization_type_enum",
+          "enum_name": "organization_type_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "organization_country_of_inc",
+          "type": "CHAR(2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "organization_state_of_inc",
+          "type": "CHAR(2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "government_entity_name",
+          "type": "VARCHAR(255)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "government_entity_type",
+          "type": "government_type_enum",
+          "enum_name": "government_type_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "government_jurisdiction",
+          "type": "VARCHAR(100)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "phone_number_primary",
+          "type": "VARCHAR(20)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "phone_number_alternate",
+          "type": "VARCHAR(20)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "email_primary",
+          "type": "VARCHAR(255)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "email_alternate",
+          "type": "VARCHAR(255)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "address_street_line1",
+          "type": "VARCHAR(100)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "address_street_line2",
+          "type": "VARCHAR(100)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "address_city",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "address_state_province",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "address_postal_code",
+          "type": "VARCHAR(20)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "address_country",
+          "type": "CHAR(2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "address_is_usa",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": true,
+          "default": "FALSE"
+        },
+        {
+          "name": "party_status",
+          "type": "party_status_enum",
+          "enum_name": "party_status_enum",
+          "nullable": false,
+          "default": "'Active'"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "created_by",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "modified_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "modified_by",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "CHECK",
+          "type": "(party_type IN ('Individual', 'Organization', 'Government'))",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "conditional_groups": [
+        {
+          "condition_field": "party_type",
+          "condition_value": "Individual",
+          "fields": [
+            "individual_name_given",
+            "individual_name_middle",
+            "individual_name_family",
+            "individual_name_suffix",
+            "individual_date_of_birth",
+            "individual_ssn",
+            "individual_country_of_birth",
+            "individual_gender"
+          ]
+        },
+        {
+          "condition_field": "party_type",
+          "condition_value": "Organization",
+          "fields": [
+            "organization_legal_name",
+            "organization_tax_id",
+            "organization_type",
+            "organization_country_of_inc",
+            "organization_state_of_inc"
+          ]
+        },
+        {
+          "condition_field": "party_type",
+          "condition_value": "Government",
+          "fields": [
+            "government_entity_name",
+            "government_entity_type",
+            "government_jurisdiction"
+          ]
+        }
+      ],
+      "check_constraints": [],
+      "unique_constraints": [
+        {
+          "fields": [
+            "individual_ssn"
+          ],
+          "condition": "individual_ssn IS NOT NULL"
+        },
+        {
+          "fields": [
+            "organization_tax_id"
+          ],
+          "condition": "organization_tax_id IS NOT NULL"
+        }
+      ],
+      "foreign_keys": [],
+      "referenced_by": [
+        "account",
+        "account_ownership",
+        "fiduciary_arrangement",
+        "fiduciary_beneficiary",
+        "account_feature",
+        "transaction",
+        "kyc_cip_verification"
+      ]
+    },
+    {
+      "name": "account",
+      "primary_key": "account_id",
+      "pk_type": "simple",
+      "columns": [
+        {
+          "name": "account_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "account_number",
+          "type": "VARCHAR(20)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "account_status",
+          "type": "account_status_enum",
+          "enum_name": "account_status_enum",
+          "nullable": false,
+          "default": "'Active'"
+        },
+        {
+          "name": "account_type",
+          "type": "account_type_enum",
+          "enum_name": "account_type_enum",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "account_open_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "account_close_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "primary_owner_party_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "interest_rate_percentage",
+          "type": "NUMERIC(6, 4)",
+          "enum_name": null,
+          "nullable": false,
+          "default": "0.0000"
+        },
+        {
+          "name": "interest_rate_effective_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_DATE"
+        },
+        {
+          "name": "interest_rate_expiry_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "interest_calculation_method",
+          "type": "interest_calc_method_enum",
+          "enum_name": "interest_calc_method_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "interest_compounding_freq",
+          "type": "interest_compound_freq_enum",
+          "enum_name": "interest_compound_freq_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "interest_calculation_basis",
+          "type": "interest_basis_enum",
+          "enum_name": "interest_basis_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "interest_last_accrual_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "current_balance",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": false,
+          "default": "0.00"
+        },
+        {
+          "name": "current_balance_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "accrued_interest_not_posted",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": false,
+          "default": "0.00"
+        },
+        {
+          "name": "minimum_balance",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": false,
+          "default": "0.00"
+        },
+        {
+          "name": "maximum_balance",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "transaction_daily_withdrawal_limit",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "transaction_monthly_withdrawal_limit",
+          "type": "INT",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "created_by",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "modified_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "modified_by",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "conditional_groups": [],
+      "check_constraints": [
+        {
+          "name": "ck_account_balance_non_negative",
+          "expression": "current_balance >= 0"
+        },
+        {
+          "name": "ck_account_accrued_interest_non_negative",
+          "expression": "accrued_interest_not_posted >= 0"
+        }
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "from_field": "primary_owner_party_id",
+          "to_table": "party",
+          "to_field": "party_id",
+          "nullable": false
+        }
+      ],
+      "referenced_by": [
+        "account_ownership",
+        "account_regulatory_classification",
+        "fiduciary_arrangement",
+        "account_feature",
+        "transaction",
+        "daily_account_balance",
+        "official_items",
+        "deposit_insurance_calculation"
+      ]
+    },
+    {
+      "name": "account_feature",
+      "primary_key": "feature_id",
+      "pk_type": "simple",
+      "columns": [
+        {
+          "name": "feature_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "account_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "feature_type",
+          "type": "account_feature_type_enum",
+          "enum_name": "account_feature_type_enum",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "feature_effective_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_DATE"
+        },
+        {
+          "name": "feature_end_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "feature_status",
+          "type": "feature_status_enum",
+          "enum_name": "feature_status_enum",
+          "nullable": false,
+          "default": "'Active'"
+        },
+        {
+          "name": "feature_termination_reason",
+          "type": "VARCHAR(255)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sweep_linked_account_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sweep_trigger_amount",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sweep_trigger_type",
+          "type": "sweep_trigger_type_enum",
+          "enum_name": "sweep_trigger_type_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sweep_frequency",
+          "type": "sweep_frequency_enum",
+          "enum_name": "sweep_frequency_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sweep_direction",
+          "type": "sweep_direction_enum",
+          "enum_name": "sweep_direction_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sweep_minimum_amount",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "beneficiary_party_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "beneficiary_designation_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "beneficiary_designation_form",
+          "type": "VARCHAR(500)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "beneficiary_form_on_file",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": true,
+          "default": "FALSE"
+        },
+        {
+          "name": "beneficiary_verification_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "overdraft_linked_account_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "overdraft_max_amount",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "overdraft_fee_per_transaction",
+          "type": "NUMERIC(10, 2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "created_by",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "modified_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      ],
+      "conditional_groups": [],
+      "check_constraints": [],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "from_field": "account_id",
+          "to_table": "account",
+          "to_field": "account_id",
+          "nullable": false
+        },
+        {
+          "from_field": "sweep_linked_account_id",
+          "to_table": "account",
+          "to_field": "account_id",
+          "nullable": true
+        },
+        {
+          "from_field": "beneficiary_party_id",
+          "to_table": "party",
+          "to_field": "party_id",
+          "nullable": true
+        },
+        {
+          "from_field": "overdraft_linked_account_id",
+          "to_table": "account",
+          "to_field": "account_id",
+          "nullable": true
+        }
+      ],
+      "referenced_by": []
+    },
+    {
+      "name": "account_ownership",
+      "primary_key": "account_ownership_id",
+      "pk_type": "simple",
+      "columns": [
+        {
+          "name": "account_ownership_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "account_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "owner_party_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "ownership_role",
+          "type": "ownership_role_enum",
+          "enum_name": "ownership_role_enum",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "ownership_percentage_amount",
+          "type": "NUMERIC(5, 2)",
+          "enum_name": null,
+          "nullable": false,
+          "default": "100.00"
+        },
+        {
+          "name": "ownership_effective_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_DATE"
+        },
+        {
+          "name": "ownership_end_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "ownership_end_reason",
+          "type": "ownership_end_reason_enum",
+          "enum_name": "ownership_end_reason_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "ownership_verification_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "ownership_verification_method",
+          "type": "verification_method_enum",
+          "enum_name": "verification_method_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "created_by",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "modified_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      ],
+      "conditional_groups": [],
+      "check_constraints": [
+        {
+          "name": "ck_ownership_percentage",
+          "expression": "ownership_percentage_amount BETWEEN 0 AND 100"
+        }
+      ],
+      "unique_constraints": [
+        {
+          "fields": [
+            "account_id",
+            "owner_party_id"
+          ],
+          "condition": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from_field": "account_id",
+          "to_table": "account",
+          "to_field": "account_id",
+          "nullable": false
+        },
+        {
+          "from_field": "owner_party_id",
+          "to_table": "party",
+          "to_field": "party_id",
+          "nullable": false
+        }
+      ],
+      "referenced_by": []
+    },
+    {
+      "name": "account_regulatory_classification",
+      "primary_key": "classification_id",
+      "pk_type": "simple",
+      "columns": [
+        {
+          "name": "classification_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "account_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "orc_code",
+          "type": "orc_code_enum",
+          "enum_name": "orc_code_enum",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "orc_insured_amount_per_owner",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": false,
+          "default": "250000.00"
+        },
+        {
+          "name": "orc_insurance_category",
+          "type": "insurance_category_enum",
+          "enum_name": "insurance_category_enum",
+          "nullable": true,
+          "default": "'Covered'"
+        },
+        {
+          "name": "orc_determination_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_DATE"
+        },
+        {
+          "name": "orc_determination_method",
+          "type": "orc_determination_method_enum",
+          "enum_name": "orc_determination_method_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "orc_verification_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "orc_change_reason",
+          "type": "VARCHAR(255)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "orc_change_prior_code",
+          "type": "orc_code_enum",
+          "enum_name": "orc_code_enum",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "orc_change_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "is_joint_ownership",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "is_ira",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "is_keogh",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "is_trust",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "is_government",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "is_business",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "is_payable_on_death",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "is_transfer_on_death",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "created_by",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "modified_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      ],
+      "conditional_groups": [],
+      "check_constraints": [],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "from_field": "account_id",
+          "to_table": "account",
+          "to_field": "account_id",
+          "nullable": false
+        }
+      ],
+      "referenced_by": [
+        "deposit_insurance_calculation"
+      ]
+    },
+    {
       "name": "daily_account_balance",
       "primary_key": [
         "account_id",
@@ -757,9 +1573,16 @@
     },
     {
       "name": "deposit_insurance_calculation",
-      "primary_key": "account_id",
+      "primary_key": "calculation_id",
       "pk_type": "simple",
       "columns": [
+        {
+          "name": "calculation_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
         {
           "name": "account_id",
           "type": "UUID",
@@ -970,835 +1793,24 @@
       "referenced_by": []
     },
     {
-      "name": "gl_deposit_control_account",
-      "primary_key": "",
-      "pk_type": "",
-      "columns": [
-        {
-          "name": "gl_account_number",
-          "type": "VARCHAR(20)",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "gl_balance_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "gl_total_deposit_balance",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "gl_control_total_per_core_system",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "gl_variance",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": false,
-          "default": "0.00"
-        },
-        {
-          "name": "gl_reconciliation_status",
-          "type": "gl_reconciliation_status_enum",
-          "enum_name": "gl_reconciliation_status_enum",
-          "nullable": false,
-          "default": "'Pending'"
-        },
-        {
-          "name": "gl_reconciliation_approved_by",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "gl_reconciliation_approved_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "created_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "created_by",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "modified_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      ],
-      "conditional_groups": [],
-      "check_constraints": [],
-      "unique_constraints": [
-        {
-          "fields": [
-            "gl_account_number",
-            "gl_balance_date"
-          ],
-          "condition": null
-        }
-      ],
-      "foreign_keys": [],
-      "referenced_by": []
-    },
-    {
-      "name": "official_items",
-      "primary_key": "account_id",
-      "pk_type": "simple",
-      "columns": [
-        {
-          "name": "account_id",
-          "type": "UUID",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "custodian_id",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "custodian_name",
-          "type": "VARCHAR(255)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "custodian_contact_info",
-          "type": "VARCHAR(500)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "custodian_balance",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "our_record_balance",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "last_reconciliation_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "data_agreement_on_file",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": true,
-          "default": "FALSE"
-        },
-        {
-          "name": "data_refresh_frequency",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "last_data_refresh_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "reconciliation_variance",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "variance_resolved_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "created_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "modified_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      ],
-      "conditional_groups": [],
-      "check_constraints": [],
-      "unique_constraints": [],
-      "foreign_keys": [
-        {
-          "from_field": "account_id",
-          "to_table": "account",
-          "to_field": "account_id",
-          "nullable": false
-        }
-      ],
-      "referenced_by": []
-    },
-    {
-      "name": "party",
-      "primary_key": "organization_tax_id",
-      "pk_type": "simple",
-      "columns": [
-        {
-          "name": "party_type",
-          "type": "party_type_enum",
-          "enum_name": "party_type_enum",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "individual_name_given",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "individual_name_middle",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "individual_name_family",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "individual_name_suffix",
-          "type": "VARCHAR(20)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "individual_date_of_birth",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "individual_ssn",
-          "type": "CHAR(9)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "individual_country_of_birth",
-          "type": "CHAR(2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "individual_gender",
-          "type": "gender_enum",
-          "enum_name": "gender_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "organization_legal_name",
-          "type": "VARCHAR(255)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "organization_tax_id",
-          "type": "VARCHAR(20)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "organization_type",
-          "type": "organization_type_enum",
-          "enum_name": "organization_type_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "organization_country_of_inc",
-          "type": "CHAR(2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "organization_state_of_inc",
-          "type": "CHAR(2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "government_entity_name",
-          "type": "VARCHAR(255)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "government_entity_type",
-          "type": "government_type_enum",
-          "enum_name": "government_type_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "government_jurisdiction",
-          "type": "VARCHAR(100)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "phone_number_alternate",
-          "type": "VARCHAR(20)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "email_alternate",
-          "type": "VARCHAR(255)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "address_street_line1",
-          "type": "VARCHAR(100)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "address_street_line2",
-          "type": "VARCHAR(100)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "address_city",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "address_state_province",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "address_postal_code",
-          "type": "VARCHAR(20)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "address_country",
-          "type": "CHAR(2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "address_is_usa",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": true,
-          "default": "FALSE"
-        },
-        {
-          "name": "party_status",
-          "type": "party_status_enum",
-          "enum_name": "party_status_enum",
-          "nullable": false,
-          "default": "'Active'"
-        },
-        {
-          "name": "created_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "created_by",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "modified_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "modified_by",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "CHECK",
-          "type": "(party_type IN ('Individual', 'Organization', 'Government'))",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        }
-      ],
-      "conditional_groups": [
-        {
-          "condition_field": "party_type",
-          "condition_value": "Individual",
-          "fields": [
-            "individual_name_given",
-            "individual_name_middle",
-            "individual_name_family",
-            "individual_name_suffix",
-            "individual_date_of_birth",
-            "individual_ssn",
-            "individual_country_of_birth",
-            "individual_gender"
-          ]
-        },
-        {
-          "condition_field": "party_type",
-          "condition_value": "Organization",
-          "fields": [
-            "organization_legal_name",
-            "organization_tax_id",
-            "organization_type",
-            "organization_country_of_inc",
-            "organization_state_of_inc"
-          ]
-        },
-        {
-          "condition_field": "party_type",
-          "condition_value": "Government",
-          "fields": [
-            "government_entity_name",
-            "government_entity_type",
-            "government_jurisdiction"
-          ]
-        }
-      ],
-      "check_constraints": [],
-      "unique_constraints": [
-        {
-          "fields": [
-            "individual_ssn"
-          ],
-          "condition": "individual_ssn IS NOT NULL"
-        },
-        {
-          "fields": [
-            "organization_tax_id"
-          ],
-          "condition": "organization_tax_id IS NOT NULL"
-        }
-      ],
-      "foreign_keys": [],
-      "referenced_by": [
-        "account_ownership",
-        "fiduciary_arrangement",
-        "fiduciary_beneficiary",
-        "account_feature",
-        "transaction",
-        "kyc_cip_verification"
-      ]
-    },
-    {
-      "name": "account_feature",
-      "primary_key": "account_id",
-      "pk_type": "simple",
-      "columns": [
-        {
-          "name": "account_id",
-          "type": "UUID",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "feature_type",
-          "type": "account_feature_type_enum",
-          "enum_name": "account_feature_type_enum",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "feature_effective_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_DATE"
-        },
-        {
-          "name": "feature_end_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "feature_status",
-          "type": "feature_status_enum",
-          "enum_name": "feature_status_enum",
-          "nullable": false,
-          "default": "'Active'"
-        },
-        {
-          "name": "feature_termination_reason",
-          "type": "VARCHAR(255)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "sweep_linked_account_id",
-          "type": "UUID",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "sweep_trigger_amount",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "sweep_trigger_type",
-          "type": "sweep_trigger_type_enum",
-          "enum_name": "sweep_trigger_type_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "sweep_frequency",
-          "type": "sweep_frequency_enum",
-          "enum_name": "sweep_frequency_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "sweep_direction",
-          "type": "sweep_direction_enum",
-          "enum_name": "sweep_direction_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "sweep_minimum_amount",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "beneficiary_party_id",
-          "type": "UUID",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "beneficiary_designation_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "beneficiary_designation_form",
-          "type": "VARCHAR(500)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "beneficiary_form_on_file",
-          "type": "BOOLEAN",
-          "enum_name": null,
-          "nullable": true,
-          "default": "FALSE"
-        },
-        {
-          "name": "beneficiary_verification_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "overdraft_linked_account_id",
-          "type": "UUID",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "overdraft_max_amount",
-          "type": "NUMERIC(18, 2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "overdraft_fee_per_transaction",
-          "type": "NUMERIC(10, 2)",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "created_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "created_by",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "modified_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      ],
-      "conditional_groups": [],
-      "check_constraints": [],
-      "unique_constraints": [],
-      "foreign_keys": [
-        {
-          "from_field": "account_id",
-          "to_table": "account",
-          "to_field": "account_id",
-          "nullable": false
-        },
-        {
-          "from_field": "sweep_linked_account_id",
-          "to_table": "account",
-          "to_field": "account_id",
-          "nullable": true
-        },
-        {
-          "from_field": "beneficiary_party_id",
-          "to_table": "party",
-          "to_field": "party_id",
-          "nullable": true
-        },
-        {
-          "from_field": "overdraft_linked_account_id",
-          "to_table": "account",
-          "to_field": "account_id",
-          "nullable": true
-        }
-      ],
-      "referenced_by": []
-    },
-    {
-      "name": "account_ownership",
-      "primary_key": "account_id",
-      "pk_type": "simple",
-      "columns": [
-        {
-          "name": "account_id",
-          "type": "UUID",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "owner_party_id",
-          "type": "UUID",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "ownership_role",
-          "type": "ownership_role_enum",
-          "enum_name": "ownership_role_enum",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "ownership_percentage_amount",
-          "type": "NUMERIC(5, 2)",
-          "enum_name": null,
-          "nullable": false,
-          "default": "100.00"
-        },
-        {
-          "name": "ownership_effective_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_DATE"
-        },
-        {
-          "name": "ownership_end_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "ownership_end_reason",
-          "type": "ownership_end_reason_enum",
-          "enum_name": "ownership_end_reason_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "ownership_verification_date",
-          "type": "DATE",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "ownership_verification_method",
-          "type": "verification_method_enum",
-          "enum_name": "verification_method_enum",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "created_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "created_by",
-          "type": "VARCHAR(50)",
-          "enum_name": null,
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "modified_date",
-          "type": "TIMESTAMP",
-          "enum_name": null,
-          "nullable": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      ],
-      "conditional_groups": [],
-      "check_constraints": [
-        {
-          "name": "ck_ownership_percentage",
-          "expression": "ownership_percentage_amount BETWEEN 0 AND 100"
-        }
-      ],
-      "unique_constraints": [
-        {
-          "fields": [
-            "account_id",
-            "owner_party_id"
-          ],
-          "condition": null
-        }
-      ],
-      "foreign_keys": [
-        {
-          "from_field": "account_id",
-          "to_table": "account",
-          "to_field": "account_id",
-          "nullable": false
-        },
-        {
-          "from_field": "owner_party_id",
-          "to_table": "party",
-          "to_field": "party_id",
-          "nullable": false
-        }
-      ],
-      "referenced_by": []
-    },
-    {
       "name": "fiduciary_arrangement",
-      "primary_key": "trustee_party_id",
+      "primary_key": "fiduciary_id",
       "pk_type": "simple",
       "columns": [
+        {
+          "name": "fiduciary_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "account_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
         {
           "name": "fiduciary_type",
           "type": "fiduciary_type_enum",
@@ -1945,6 +1957,12 @@
       "unique_constraints": [],
       "foreign_keys": [
         {
+          "from_field": "account_id",
+          "to_table": "account",
+          "to_field": "account_id",
+          "nullable": false
+        },
+        {
           "from_field": "trustee_party_id",
           "to_table": "party",
           "to_field": "party_id",
@@ -1963,9 +1981,16 @@
     },
     {
       "name": "fiduciary_beneficiary",
-      "primary_key": "fiduciary_id",
+      "primary_key": "beneficiary_id",
       "pk_type": "simple",
       "columns": [
+        {
+          "name": "beneficiary_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
         {
           "name": "fiduciary_id",
           "type": "UUID",
@@ -2098,9 +2123,16 @@
     },
     {
       "name": "kyc_cip_verification",
-      "primary_key": "party_id",
+      "primary_key": "verification_id",
       "pk_type": "simple",
       "columns": [
+        {
+          "name": "verification_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
         {
           "name": "party_id",
           "type": "UUID",
@@ -2426,10 +2458,141 @@
       "referenced_by": []
     },
     {
-      "name": "transaction",
-      "primary_key": "account_id",
+      "name": "official_items",
+      "primary_key": "official_item_id",
       "pk_type": "simple",
       "columns": [
+        {
+          "name": "official_item_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "account_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "custodian_id",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "custodian_name",
+          "type": "VARCHAR(255)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "custodian_contact_info",
+          "type": "VARCHAR(500)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "custodian_balance",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "our_record_balance",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "last_reconciliation_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "data_agreement_on_file",
+          "type": "BOOLEAN",
+          "enum_name": null,
+          "nullable": true,
+          "default": "FALSE"
+        },
+        {
+          "name": "data_refresh_frequency",
+          "type": "VARCHAR(50)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "last_data_refresh_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "reconciliation_variance",
+          "type": "NUMERIC(18, 2)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "variance_resolved_date",
+          "type": "DATE",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "modified_date",
+          "type": "TIMESTAMP",
+          "enum_name": null,
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      ],
+      "conditional_groups": [],
+      "check_constraints": [],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "from_field": "account_id",
+          "to_table": "account",
+          "to_field": "account_id",
+          "nullable": false
+        }
+      ],
+      "referenced_by": []
+    },
+    {
+      "name": "transaction",
+      "primary_key": "transaction_id",
+      "pk_type": "simple",
+      "columns": [
+        {
+          "name": "transaction_id",
+          "type": "UUID",
+          "enum_name": null,
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
         {
           "name": "account_id",
           "type": "UUID",
@@ -2966,6 +3129,13 @@
   },
   "foreign_keys": [
     {
+      "from_table": "account",
+      "from_field": "primary_owner_party_id",
+      "to_table": "party",
+      "to_field": "party_id",
+      "nullable": false
+    },
+    {
       "from_table": "account_ownership",
       "from_field": "account_id",
       "to_table": "account",
@@ -2977,6 +3147,20 @@
       "from_field": "owner_party_id",
       "to_table": "party",
       "to_field": "party_id",
+      "nullable": false
+    },
+    {
+      "from_table": "account_regulatory_classification",
+      "from_field": "account_id",
+      "to_table": "account",
+      "to_field": "account_id",
+      "nullable": false
+    },
+    {
+      "from_table": "fiduciary_arrangement",
+      "from_field": "account_id",
+      "to_table": "account",
+      "to_field": "account_id",
       "nullable": false
     },
     {
@@ -3093,35 +3277,35 @@
     }
   ],
   "generation_order": [
-    "account",
-    "account_regulatory_classification",
     "audit_log",
-    "daily_account_balance",
-    "deposit_insurance_calculation",
     "gl_deposit_control_account",
-    "official_items",
     "party",
+    "account",
     "account_feature",
     "account_ownership",
+    "account_regulatory_classification",
+    "daily_account_balance",
+    "deposit_insurance_calculation",
     "fiduciary_arrangement",
     "fiduciary_beneficiary",
     "kyc_cip_verification",
+    "official_items",
     "transaction"
   ],
   "generation_order_rationale": {
-    "account": "Referenced by: account_ownership, account_feature, transaction, daily_account_balance, official_items, deposit_insurance_calculation",
-    "account_regulatory_classification": "Referenced by: deposit_insurance_calculation",
     "audit_log": "No FK dependencies",
-    "daily_account_balance": "Depends on: account",
-    "deposit_insurance_calculation": "Depends on: account, account_regulatory_classification",
     "gl_deposit_control_account": "No FK dependencies",
-    "official_items": "Depends on: account",
-    "party": "Referenced by: account_ownership, fiduciary_arrangement, fiduciary_beneficiary, account_feature, transaction, kyc_cip_verification",
+    "party": "Referenced by: account, account_ownership, fiduciary_arrangement, fiduciary_beneficiary, account_feature, transaction, kyc_cip_verification",
+    "account": "Depends on: party",
     "account_feature": "Depends on: account, account, party, account",
     "account_ownership": "Depends on: account, party",
-    "fiduciary_arrangement": "Depends on: party, party",
+    "account_regulatory_classification": "Depends on: account",
+    "daily_account_balance": "Depends on: account",
+    "deposit_insurance_calculation": "Depends on: account, account_regulatory_classification",
+    "fiduciary_arrangement": "Depends on: account, party, party",
     "fiduciary_beneficiary": "Depends on: fiduciary_arrangement, party",
     "kyc_cip_verification": "Depends on: party",
+    "official_items": "Depends on: account",
     "transaction": "Depends on: account, party; Self-referencing: original_transaction_id"
   },
   "warnings": [

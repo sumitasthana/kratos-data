@@ -192,8 +192,9 @@ class DDLParser:
 
     def _parse_column(self, line: str, table_name: str) -> Optional[Column]:
         """Parse a single column definition."""
-        # Skip constraint lines
-        if any(kw in line.upper() for kw in ['CONSTRAINT', 'PRIMARY', 'UNIQUE', 'FOREIGN', 'INDEX']):
+        # Skip standalone constraint lines (not column definitions with constraints)
+        line_upper = line.upper()
+        if line_upper.startswith(('CONSTRAINT', 'UNIQUE', 'FOREIGN', 'INDEX', 'PRIMARY KEY')):
             return None
 
         # Remove trailing comma
@@ -452,7 +453,7 @@ Only include tables with conditional groups. Return valid JSON only."""
 
     def _compute_generation_order(self) -> Tuple[List[str], Dict[str, str]]:
         """Compute topological sort of tables based on FK dependencies."""
-        # Build dependency graph
+        # Build dependency graph - account to party mapping
         in_degree = {table: 0 for table in self.parser.tables}
         graph = defaultdict(list)
         rationale = {}
@@ -466,13 +467,13 @@ Only include tables with conditional groups. Return valid JSON only."""
                 if fk.to_table == table_name:
                     self_refs.add(table_name)
                     continue
+                # Add edge: to_table -> table_name (to_table must come before table_name)
                 graph[fk.to_table].append(table_name)
                 in_degree[table_name] += 1
 
         # Topological sort (Kahn's algorithm)
         queue = [table for table in in_degree if in_degree[table] == 0]
         order = []
-        has_cycle = False
 
         while queue:
             # Sort queue for deterministic ordering
@@ -486,9 +487,7 @@ Only include tables with conditional groups. Return valid JSON only."""
                     queue.append(neighbor)
 
         # Check for cycles (excluding self-references)
-        remaining_in_degree = {t: d for t, d in in_degree.items() if t not in order}
-        if any(d > 0 for d in remaining_in_degree.values()):
-            has_cycle = True
+        if len(order) != len(self.parser.tables):
             # Return tables in order, with problematic ones at end
             remaining = [t for t in sorted(self.parser.tables.keys()) if t not in order]
             order.extend(remaining)
