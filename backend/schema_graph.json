@@ -1114,14 +1114,6 @@
             "overdraft_max_amount",
             "overdraft_fee_per_transaction"
           ]
-        },
-        {
-          "condition_field": "feature_status",
-          "condition_value": "terminated",
-          "fields": [
-            "feature_end_date",
-            "feature_termination_reason"
-          ]
         }
       ],
       "check_constraints": [],
@@ -1254,7 +1246,7 @@
       "conditional_groups": [
         {
           "condition_field": "ownership_role",
-          "condition_value": "terminated",
+          "condition_value": "ended",
           "fields": [
             "ownership_end_date",
             "ownership_end_reason"
@@ -1829,24 +1821,15 @@
           "enum_name": null,
           "nullable": false,
           "default": "CURRENT_TIMESTAMP"
-        },
-        {
-          "name": "(calculated_insured_amount",
-          "type": "+ calculated_uninsured_amount - input_account_balance) < 0.01",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "AND",
-          "type": "(calculated_insured_amount + calculated_uninsured_amount - input_account_balance) > -0.01",
-          "enum_name": null,
-          "nullable": true,
-          "default": null
         }
       ],
       "conditional_groups": [],
-      "check_constraints": [],
+      "check_constraints": [
+        {
+          "name": "ck_insured_uninsured_sum",
+          "expression": "(calculated_insured_amount + calculated_uninsured_amount - input_account_balance) < 0.01 AND (calculated_insured_amount + calculated_uninsured_amount - input_account_balance) > -0.01"
+        }
+      ],
       "unique_constraints": [],
       "foreign_keys": [
         {
