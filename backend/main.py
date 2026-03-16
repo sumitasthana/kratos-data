@@ -3,10 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 from utils.bedrock_client import get_bedrock_client
+from routes.ontology import router as ontology_router
 
 load_dotenv()
 
 app = FastAPI(title="synth-data-studio")
+
+# Register routes
+app.include_router(ontology_router)
 
 # Configuration
 OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "json").lower()
