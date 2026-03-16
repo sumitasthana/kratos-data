@@ -21,6 +21,9 @@ You will receive:
 Return a JSON delta containing ONLY the fields you are completing.
 Do not return fields already resolved by phase_a.
 
+CRITICAL: Return ONLY valid JSON. No markdown fences, no commentary, no extra text.
+Start with { and end with }. Ensure all strings are properly quoted. Ensure all arrays and objects are properly closed.
+
 RULES:
 - All conditions use the DSL: {"field":"<n>","operator":"<op>","value":"<v>"}
   Operators: ==, !=, in, not_in, >, <, >=, <=, is_null, is_not_null
@@ -35,7 +38,12 @@ RULES:
 - Derive realistic distributions from the data dictionary context
 - If domain supplements include row_count_hints or generation_profiles, use them as guidance
 
-Return ONLY valid JSON. No markdown, no commentary."""
+VALIDATION: Before returning, validate that your JSON is valid by checking:
+1. All strings are enclosed in double quotes
+2. All arrays are properly closed with ]
+3. All objects are properly closed with }
+4. No trailing commas
+5. No unescaped special characters in strings"""
 
 
 class DistributionSpecEnricher:
@@ -248,6 +256,13 @@ Supplements provided: {supplements_provided}
             text = text[:-3]
 
         text = text.strip()
+
+        # Try to find JSON object boundaries
+        start_idx = text.find('{')
+        end_idx = text.rfind('}')
+        
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            text = text[start_idx:end_idx+1]
 
         try:
             delta = json.loads(text)
