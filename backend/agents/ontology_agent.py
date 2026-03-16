@@ -2,13 +2,17 @@ import re
 import json
 import argparse
 import asyncio
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple, Optional
 from dataclasses import dataclass, asdict, field
 from collections import defaultdict
 
-import boto3
-from botocore.config import Config
+from dotenv import load_dotenv
+import anthropic
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 @dataclass
@@ -294,7 +298,6 @@ class OntologyAgent:
     def __init__(self, bedrock_model: str = "anthropic.claude-sonnet-4-20250514"):
         self.bedrock_model = bedrock_model
         self.parser = DDLParser()
-        self.bedrock_client = boto3.client('bedrock-runtime', region_name='us-east-1')
 
     async def process_ddl(self, ddl_path: str, output_path: str) -> None:
         """Process a DDL file and generate schema_graph.json."""
@@ -418,27 +421,28 @@ Only include tables with conditional groups. Return valid JSON only."""
             self.parser.warnings.append(f"LLM conditional group detection unavailable: {str(e)}")
 
     async def _call_bedrock(self, prompt: str) -> str:
-        """Call AWS Bedrock with the given prompt."""
+        """Call Anthropic API with the given prompt."""
         try:
-            response = self.bedrock_client.invoke_model(
-                modelId=self.bedrock_model,
-                contentType='application/json',
-                accept='application/json',
-                body=json.dumps({
-                    'anthropic_version': 'bedrock-2023-06-01',
-                    'max_tokens': 2048,
-                    'messages': [
-                        {
-                            'role': 'user',
-                            'content': prompt
-                        }
-                    ]
-                })
+            api_key = os.getenv('ANTHROPIC_API_KEY')
+            model = os.getenv('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022')
+            
+            if not api_key:
+                raise Exception("ANTHROPIC_API_KEY not set in environment")
+            
+            client = anthropic.Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model=model,
+                max_tokens=2048,
+                messages=[
+                    {
+                        'role': 'user',
+                        'content': prompt
+                    }
+                ]
             )
-            response_body = json.loads(response['body'].read())
-            return response_body['content'][0]['text']
+            return response.content[0].text
         except Exception as e:
-            raise Exception(f"Bedrock API error: {str(e)}")
+            raise Exception(f"Anthropic API error: {str(e)}")
 
     def _parse_json_response(self, response: str) -> Optional[Dict[str, Any]]:
         """Extract JSON from LLM response."""

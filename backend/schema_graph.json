@@ -3309,6 +3309,6 @@
     "transaction": "Depends on: account, party; Self-referencing: original_transaction_id"
   },
   "warnings": [
-    "LLM conditional group detection unavailable: Bedrock API error: Unable to locate credentials"
+    "LLM conditional group detection unavailable: Anthropic API error: Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CZ74i7xGn54hsjz9qpyVU'}"
   ]
 }
