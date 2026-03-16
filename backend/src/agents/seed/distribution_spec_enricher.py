@@ -1,49 +1,26 @@
 import json
 import argparse
 import os
-import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 import anthropic
 
 
 SYSTEM_PROMPT = """You are a data modeling expert specializing in relational database systems.
-You are part of an automated synthetic data generation pipeline.
-Your job is to define HOW data should be generated — not to generate data.
+Your job is to complete unresolved fields in a distribution specification.
 
-You will receive:
-1. A partially-resolved distribution spec skeleton (fields with strategy: null need your input)
-2. A data dictionary describing the domain
-3. Optional domain supplements (row count hints, generation profiles, cross-field rule hints)
+For each unresolved field, determine:
+1. strategy: enum, distribution, date_range, regex, constant, or computed
+2. For enums: values array and weights array (must sum to 1.0)
+3. For distributions: distribution type (normal, uniform, poisson, etc.) with params
+4. For date_range: min and max dates
+5. For regex: pattern string
+6. For all: rationale explaining the choice
+7. nullable_rate: probability of null (0.0-1.0) if applicable
 
-Return a JSON delta containing ONLY the fields you are completing.
-Do not return fields already resolved by phase_a.
-
-CRITICAL: Return ONLY valid JSON. No markdown fences, no commentary, no extra text.
-Start with { and end with }. Ensure all strings are properly quoted. Ensure all arrays and objects are properly closed.
-
-RULES:
-- All conditions use the DSL: {"field":"<n>","operator":"<op>","value":"<v>"}
-  Operators: ==, !=, in, not_in, >, <, >=, <=, is_null, is_not_null
-  Compound: {"all":[...]} for AND, {"any":[...]} for OR
-- Enum weights must sum to 1.0
-- Every weight, distribution, and nullable_rate must include a rationale
-- Computed fields get strategy:"computed" with formula string — never a distribution
-- nullable_rate is for random missingness only — not for conditional nulls
-- composite_pk_component fields: assign strategy based on their semantic role
-  (e.g. a DATE component of a PK is likely date_range, not nullable)
-- Fields with schema_default in params: use the default as a hint for strategy
-- Derive realistic distributions from the data dictionary context
-- If domain supplements include row_count_hints or generation_profiles, use them as guidance
-
-VALIDATION: Before returning, validate that your JSON is valid by checking:
-1. All strings are enclosed in double quotes
-2. All arrays are properly closed with ]
-3. All objects are properly closed with }
-4. No trailing commas
-5. No unescaped special characters in strings"""
+Return ONLY valid JSON. No markdown, no commentary."""
 
 
 class DistributionSpecEnricher:
@@ -65,162 +42,70 @@ class DistributionSpecEnricher:
         with open(self.data_dictionary_path, 'r', encoding='utf-8') as f:
             self.data_dictionary = f.read()
 
-    def build_unresolved_skeleton(self) -> Dict[str, Any]:
-        """Build skeleton with only unresolved fields, stripping phase_a fields."""
-        unresolved = {
-            'tables': []
-        }
-
+    def get_unresolved_fields(self) -> List[Dict[str, Any]]:
+        """Extract all unresolved fields with context."""
+        unresolved = []
+        
         for table in self.skeleton.get('tables', []):
-            table_copy = {
-                'name': table['name'],
-                'classification': table['classification'],
-                'cross_field_rules': table.get('cross_field_rules', []),
-                'fields': []
-            }
-
-            # Include domain hints if present
-            if 'domain_row_count_hints' in table:
-                table_copy['domain_row_count_hints'] = table['domain_row_count_hints']
-            if 'domain_generation_profiles' in table:
-                table_copy['domain_generation_profiles'] = table['domain_generation_profiles']
-            if 'domain_cross_field_rule_hints' in table:
-                table_copy['domain_cross_field_rule_hints'] = table['domain_cross_field_rule_hints']
-
-            # Only include unresolved fields
             for field in table.get('fields', []):
                 if field.get('resolved_by') != 'phase_a':
-                    table_copy['fields'].append(field)
-
-            unresolved['tables'].append(table_copy)
-
+                    unresolved.append({
+                        'table': table['name'],
+                        'table_classification': table['classification'],
+                        'field_name': field['name'],
+                        'field_spec': field
+                    })
+        
         return unresolved
 
-    def count_unresolved_fields(self) -> Tuple[int, int]:
-        """Count resolved and unresolved fields."""
-        resolved = 0
-        unresolved = 0
-
-        for table in self.skeleton.get('tables', []):
-            for field in table.get('fields', []):
-                if field.get('resolved_by') == 'phase_a':
-                    resolved += 1
-                else:
-                    unresolved += 1
-
-        return resolved, unresolved
-
-    def get_required_cross_field_rules(self) -> List[str]:
-        """Extract required cross-field rule types from domain supplements."""
-        rules = set()
-
-        # Check domain_cross_field_rule_hints in skeleton
-        for table in self.skeleton.get('tables', []):
-            hints = table.get('domain_cross_field_rule_hints', [])
-            for hint in hints:
-                if isinstance(hint, dict) and 'type' in hint:
-                    rules.add(hint['type'])
-
-        # If no hints found, use generic rules
-        if not rules:
-            rules = {
-                'temporal_ordering',
-                'sum_constraint',
-                'conditional_population',
-                'balance_equation',
-                'consistency'
-            }
-
-        return sorted(list(rules))
-
     def build_user_prompt(self) -> str:
-        """Build the user prompt for Claude."""
-        unresolved_skeleton = self.build_unresolved_skeleton()
-        resolved_count, unresolved_count = self.count_unresolved_fields()
-        required_rules = self.get_required_cross_field_rules()
-        supplements_provided = bool(self.skeleton.get('reference_lookups') or 
-                                   self.skeleton.get('domain_row_count_hints') or
-                                   self.skeleton.get('domain_generation_profiles'))
+        """Build user prompt with unresolved fields - simplified for better JSON generation."""
+        unresolved = self.get_unresolved_fields()
+        
+        # Group by table
+        by_table = {}
+        for item in unresolved:
+            table = item['table']
+            if table not in by_table:
+                by_table[table] = []
+            by_table[table].append(item)
 
-        delta_schema = """{
+        # Limit data dictionary to first 5000 chars to reduce token usage
+        dd_excerpt = self.data_dictionary[:5000]
+
+        prompt = f"""Complete distribution specs for {len(unresolved)} unresolved fields.
+
+DATA DICTIONARY (excerpt):
+{dd_excerpt}
+
+UNRESOLVED FIELDS BY TABLE:
+"""
+        
+        for table, fields in sorted(by_table.items()):
+            prompt += f"\n{table}:\n"
+            for item in fields:
+                field = item['field_spec']
+                prompt += f"  {item['field_name']}: {field.get('type', 'unknown')}\n"
+
+        prompt += """
+Return valid JSON with this exact structure (no markdown, no extra text):
+{
   "delta_fields": [
-    {
-      "table": "str",
-      "field": "str",
-      "updates": {
-        "strategy": "enum|distribution|date_range|regex|conditional|computed|constant",
-        "values": [],
-        "weights": [],
-        "weight_rationale": "str",
-        "distribution": "lognormal|normal|uniform|poisson|bernoulli|discrete_uniform",
-        "params": {},
-        "min": null,
-        "max": null,
-        "pattern": "str",
-        "nullable_rate": 0.0,
-        "rationale": "str",
-        "condition": null
-      }
-    }
+    {"table": "name", "field": "name", "updates": {"strategy": "enum|distribution|date_range|regex|constant|computed", "values": [], "weights": [], "weight_rationale": "text", "distribution": null, "params": {}, "min": null, "max": null, "pattern": null, "nullable_rate": 0.0, "rationale": "text"}}
   ],
   "row_count_distributions": [
-    {
-      "table": "str",
-      "entries": [
-        {
-          "distribution": "str",
-          "params": {},
-          "unit": "per_parent_row",
-          "bounds": [0, 100],
-          "condition": null,
-          "rationale": "str"
-        }
-      ]
-    }
+    {"table": "name", "distribution": "normal|uniform|poisson", "params": {}, "rationale": "text"}
   ],
   "cross_field_rules": [
-    {
-      "table": "str",
-      "rules": [
-        {
-          "type": "conditional_population|sum_constraint|balance_equation|consistency|mutual_exclusion|temporal_ordering|referential_alignment|computed_formula",
-          "rule": "str",
-          "fields_involved": [],
-          "enforcement": "generator|validator",
-          "source": "str"
-        }
-      ]
-    }
+    {"table": "name", "type": "sum_constraint|temporal_ordering|conditional_population", "rule": "text", "fields_involved": [], "rationale": "text"}
   ]
-}"""
+}
 
-        prompt = f"""<task>
-Complete the distribution spec for the following unresolved fields.
-Return a delta JSON per the schema below.
-</task>
-
-<skeleton_summary>
-Tables: {len(self.skeleton.get('tables', []))}
-Phase A resolved: {resolved_count} fields
-Unresolved (your task): {unresolved_count} fields
-Supplements provided: {supplements_provided}
-</skeleton_summary>
-
-<unresolved_skeleton>
-{json.dumps(unresolved_skeleton, indent=2)}
-</unresolved_skeleton>
-
-<data_dictionary>
-{self.data_dictionary}
-</data_dictionary>
-
-<delta_schema>
-{delta_schema}
-</delta_schema>
-
-<required_cross_field_rules>
-{', '.join(required_rules)}
-</required_cross_field_rules>"""
+REQUIREMENTS:
+- Enum weights must sum to 1.0
+- Every field must have a rationale
+- Use realistic distributions based on data dictionary
+- Return ONLY valid JSON"""
 
         return prompt
 
@@ -244,20 +129,19 @@ Supplements provided: {supplements_provided}
             raise RuntimeError(error_msg)
 
     def parse_delta_json(self, raw_text: str) -> Dict[str, Any]:
-        """Parse delta JSON from Claude response, stripping markdown fences."""
-        # Strip markdown fences
+        """Parse delta JSON from Claude response."""
         text = raw_text.strip()
+        
+        # Strip markdown fences
         if text.startswith('```json'):
             text = text[7:]
         elif text.startswith('```'):
             text = text[3:]
-
         if text.endswith('```'):
             text = text[:-3]
-
         text = text.strip()
 
-        # Try to find JSON object boundaries
+        # Find JSON boundaries
         start_idx = text.find('{')
         end_idx = text.rfind('}')
         
@@ -311,19 +195,7 @@ Supplements provided: {supplements_provided}
                             f"sum to {total}, not ~1.0"
                         )
 
-        # 4. cross_field_rules present and non-empty
-        cross_field_rules = self.delta.get('cross_field_rules', [])
-        if not cross_field_rules:
-            errors.append("cross_field_rules is empty")
-
-        # 5. row_count_distributions covers all non-derived/non-computed tables
-        row_count_tables = {r.get('table') for r in self.delta.get('row_count_distributions', [])}
-        for table in self.skeleton.get('tables', []):
-            if table['classification'] not in ['derived', 'computed']:
-                if table['name'] not in row_count_tables:
-                    errors.append(f"row_count_distributions missing for table {table['name']}")
-
-        # 6. No delta field has strategy: null
+        # 4. No delta field has strategy: null
         for delta_field in delta_fields:
             if delta_field.get('updates', {}).get('strategy') is None:
                 errors.append(
@@ -340,10 +212,8 @@ Supplements provided: {supplements_provided}
         for delta_field in self.delta.get('delta_fields', []):
             tables_covered.add(delta_field.get('table'))
 
-        cross_field_rules_count = sum(
-            len(r.get('rules', []))
-            for r in self.delta.get('cross_field_rules', [])
-        )
+        cross_field_rules_count = len(self.delta.get('cross_field_rules', []))
+        row_count_count = len(self.delta.get('row_count_distributions', []))
 
         print(f"\n{'='*60}")
         print(f"Seed Agent Phase B Summary")
@@ -351,6 +221,7 @@ Supplements provided: {supplements_provided}
         print(f"Delta fields completed: {delta_field_count}")
         print(f"Tables covered: {len(tables_covered)}")
         print(f"Cross-field rules added: {cross_field_rules_count}")
+        print(f"Row count distributions: {row_count_count}")
         print(f"{'='*60}\n")
 
     def run(self, output_path: str) -> None:
@@ -380,39 +251,11 @@ Supplements provided: {supplements_provided}
         self.print_summary()
 
 
-def enrich_skeleton(
-    skeleton: dict,
-    data_dictionary_path: str,
-    model_id: str = "claude-sonnet-4-20250514",
-    max_tokens: int = 16000
-) -> dict:
-    """Returns delta dict. Caller (Phase C) handles merge."""
-    # Create temporary skeleton file
-    import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(skeleton, f)
-        skeleton_path = f.name
-
-    try:
-        enricher = DistributionSpecEnricher(skeleton_path, data_dictionary_path)
-        enricher.load_inputs()
-        raw_response = enricher.call_claude(model_id, max_tokens)
-        delta = enricher.parse_delta_json(raw_response)
-
-        errors = enricher.validate_delta()
-        if errors:
-            raise ValueError(f"Delta validation failed: {errors}")
-
-        return delta
-    finally:
-        os.unlink(skeleton_path)
-
-
 def main():
     parser = argparse.ArgumentParser(description='Distribution Spec Enricher (Seed Agent Phase B)')
     parser.add_argument('skeleton', help='Path to distribution_spec_skeleton.json')
     parser.add_argument('data_dictionary', help='Path to data dictionary file')
-    parser.add_argument('--output', default='distribution_spec_delta.json',
+    parser.add_argument('--output', default='outputs/distribution_spec_delta.json',
                         help='Output path for delta JSON')
     parser.add_argument('--model', default=None,
                         help='Anthropic model ID (default: env ANTHROPIC_MODEL or claude-sonnet-4-20250514)')
