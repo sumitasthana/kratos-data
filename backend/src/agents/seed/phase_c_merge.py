@@ -83,20 +83,13 @@ class PhaseCMerger:
                 stats['delta_fields_rejected'] += 1
                 continue
             
-            # Check if already resolved by phase_a
-            if field.get('resolved_by') == 'phase_a':
-                self.errors.append({
-                    'type': 'overwriting_phase_a',
-                    'table': table_name,
-                    'field': field_name,
-                    'message': f'Cannot overwrite field already resolved by phase_a'
-                })
-                stats['delta_fields_rejected'] += 1
-                continue
-            
             # Validate and merge updates
             clamped = self._validate_and_merge_field(field, updates, table_name, field_name)
-            field['resolved_by'] = 'phase_b'
+            
+            # Only set resolved_by: phase_b if it was null (not phase_a)
+            # Phase A fields can receive weights/params from Phase B but retain resolved_by: phase_a
+            if field.get('resolved_by') is None:
+                field['resolved_by'] = 'phase_b'
             
             if clamped:
                 stats['delta_fields_clamped'] += 1
@@ -148,7 +141,31 @@ class PhaseCMerger:
                     table['cross_field_rules'].append(validated_rule)
                     stats['cross_field_rules_added'] += 1
         
-        # 4. Count total fields and resolution status
+        # 4. Handle transaction_volume_spec
+        transaction_volume_spec = self.delta.get('transaction_volume_spec')
+        if transaction_volume_spec:
+            if 'transaction' in table_map:
+                table_map['transaction']['transaction_volume_spec'] = transaction_volume_spec
+            else:
+                self.warnings.append({
+                    'type': 'transaction_table_not_found',
+                    'table': 'transaction',
+                    'field': None,
+                    'message': 'transaction_volume_spec found in delta but transaction table not in skeleton',
+                    'original_value': None,
+                    'clamped_to': None
+                })
+        else:
+            self.warnings.append({
+                'type': 'missing_transaction_volume_spec',
+                'table': 'transaction',
+                'field': None,
+                'message': 'transaction_volume_spec not found in delta',
+                'original_value': None,
+                'clamped_to': None
+            })
+        
+        # 5. Count total fields and resolution status
         for table in self.final_spec.get('tables', []):
             for field in table.get('fields', []):
                 stats['total_fields_in_final_spec'] += 1
@@ -169,7 +186,7 @@ class PhaseCMerger:
                         'clamped_to': None
                     })
         
-        # 5. Build validation report
+        # 6. Build validation report
         status = 'success'
         if self.errors:
             status = 'failed'
@@ -182,6 +199,9 @@ class PhaseCMerger:
             'warnings': self.warnings,
             'stats': stats
         }
+        
+        # Add validation_report as top-level key in final_spec
+        self.final_spec['validation_report'] = self.validation_report
         
         return self.final_spec, self.validation_report
 
@@ -275,10 +295,12 @@ class PhaseCMerger:
         return rule
 
     def save_outputs(self, spec_output: str, report_output: str) -> None:
-        """Save final spec and validation report."""
+        """Save final spec (with embedded validation_report) and separate validation report file."""
+        # Save spec with embedded validation_report
         with open(spec_output, 'w', encoding='utf-8') as f:
             json.dump(self.final_spec, f, indent=2)
         
+        # Save separate validation report file
         with open(report_output, 'w', encoding='utf-8') as f:
             json.dump(self.validation_report, f, indent=2)
 
