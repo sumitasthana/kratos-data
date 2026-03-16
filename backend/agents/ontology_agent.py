@@ -133,6 +133,10 @@ class DDLParser:
             if not line or line.startswith('--'):
                 continue
 
+            # Stop parsing if we hit the closing ); of the CREATE TABLE
+            if line == ');':
+                break
+
             # Strip inline comments
             if '--' in line:
                 line = line[:line.index('--')].strip()
@@ -158,13 +162,38 @@ class DDLParser:
                     table.unique_constraints.append(UniqueConstraint(fields=fields, condition=condition))
                 continue
 
-            # Parse CHECK constraint (handle multi-line)
+            # Parse named CHECK constraint (CONSTRAINT <name> CHECK)
             if 'CONSTRAINT' in line.upper() and 'CHECK' in line.upper():
                 constraint_name_match = re.search(r'CONSTRAINT\s+(\w+)\s+CHECK\s*\(', line, re.IGNORECASE)
                 if constraint_name_match:
                     constraint_name = constraint_name_match.group(1)
                     # Accumulate lines until closing parenthesis
                     accumulated = line[constraint_name_match.end()-1:]  # Start from the opening paren
+                    paren_count = accumulated.count('(') - accumulated.count(')')
+                    
+                    while paren_count > 0 and i < len(lines):
+                        next_line = lines[i].strip()
+                        i += 1
+                        if '--' in next_line:
+                            next_line = next_line[:next_line.index('--')].strip()
+                        accumulated += ' ' + next_line
+                        paren_count += next_line.count('(') - next_line.count(')')
+                    
+                    # Extract expression from accumulated string
+                    expr_match = re.search(r'\((.*)\)(?:,|$)', accumulated, re.DOTALL)
+                    if expr_match:
+                        expression = expr_match.group(1).strip()
+                        table.check_constraints.append(CheckConstraint(name=constraint_name, expression=expression))
+                continue
+
+            # Parse unnamed inline CHECK constraint (CHECK without CONSTRAINT keyword)
+            if line.upper().startswith('CHECK'):
+                check_match = re.search(r'CHECK\s*\(', line, re.IGNORECASE)
+                if check_match:
+                    # Generate a default constraint name
+                    constraint_name = f"ck_{table_name}_{len(table.check_constraints)}"
+                    # Accumulate lines until closing parenthesis
+                    accumulated = line[check_match.end()-1:]  # Start from the opening paren
                     paren_count = accumulated.count('(') - accumulated.count(')')
                     
                     while paren_count > 0 and i < len(lines):
