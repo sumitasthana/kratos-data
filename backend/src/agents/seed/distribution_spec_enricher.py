@@ -44,75 +44,101 @@ class DistributionSpecEnricher:
         
         return unresolved
 
-    def infer_strategy(self, field: Dict[str, Any], field_name: str) -> str:
-        """Infer strategy based on field type and context."""
+    def infer_strategy_and_params(self, field: Dict[str, Any], field_name: str, table_name: str) -> tuple:
+        """Infer strategy and params based on field type and context.
+        
+        Returns: (strategy, distribution_type, params, min, max, pattern, rationale)
+        """
         field_type = field.get('type', '').upper()
+        field_name_lower = field_name.lower()
         
         # Composite PK components
         if field.get('params', {}).get('role') == 'composite_pk_component':
             if 'DATE' in field_type or 'TIMESTAMP' in field_type:
-                return 'date_range'
-            elif 'INT' in field_type or 'NUMERIC' in field_type:
-                return 'distribution'
-            return 'distribution'
+                return ('date_range', None, {}, '2015-01-01', '2025-12-31', None,
+                        f'Date component of composite PK in {table_name}')
+            elif 'INT' in field_type or 'NUMERIC' in field_type or 'DECIMAL' in field_type:
+                return ('distribution', 'uniform', {'min': 1, 'max': 1000}, None, None, None,
+                        f'Numeric component of composite PK in {table_name}')
+            return ('distribution', 'uniform', {'min': 0, 'max': 100}, None, None, None,
+                    f'Composite PK component in {table_name}')
         
         # Date/timestamp fields
         if 'DATE' in field_type or 'TIMESTAMP' in field_type:
-            return 'date_range'
+            return ('date_range', None, {}, '2015-01-01', '2025-12-31', None,
+                    f'{field_name} is a date/timestamp field')
         
-        # Numeric fields
+        # Numeric fields - use appropriate distributions
         if 'INT' in field_type or 'NUMERIC' in field_type or 'DECIMAL' in field_type or 'FLOAT' in field_type:
-            return 'distribution'
+            # Check for balance/amount fields - use lognormal
+            if any(x in field_name_lower for x in ['balance', 'amount', 'total', 'sum', 'value']):
+                return ('distribution', 'lognormal', {'mean': 5, 'std_dev': 2}, None, None, None,
+                        f'{field_name} is a financial amount - using lognormal distribution')
+            # Check for count/quantity fields - use poisson
+            if any(x in field_name_lower for x in ['count', 'quantity', 'number', 'num_']):
+                return ('distribution', 'poisson', {'lambda': 10}, None, None, None,
+                        f'{field_name} is a count field - using poisson distribution')
+            # Default numeric - uniform
+            return ('distribution', 'uniform', {'min': 0, 'max': 1000}, None, None, None,
+                    f'{field_name} is numeric - using uniform distribution')
         
-        # String fields - check for patterns
+        # String fields - use regex or constant
         if 'VARCHAR' in field_type or 'TEXT' in field_type or 'CHAR' in field_type:
-            if 'email' in field_name.lower():
-                return 'regex'
-            if 'phone' in field_name.lower() or 'number' in field_name.lower():
-                return 'regex'
-            return 'regex'
+            # Check for specific patterns
+            if any(x in field_name_lower for x in ['email', 'mail']):
+                return ('regex', None, {}, None, None, r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+                        f'{field_name} is an email field')
+            if any(x in field_name_lower for x in ['phone', 'telephone']):
+                return ('regex', None, {}, None, None, r'^\+?1?\d{9,15}$',
+                        f'{field_name} is a phone number field')
+            if any(x in field_name_lower for x in ['zip', 'postal', 'code']):
+                return ('regex', None, {}, None, None, r'^\d{5}(-\d{4})?$',
+                        f'{field_name} is a postal code field')
+            if any(x in field_name_lower for x in ['name', 'title', 'description']):
+                return ('regex', None, {}, None, None, r'^[a-zA-Z\s\-\.]{1,100}$',
+                        f'{field_name} is a text field - using regex pattern')
+            # Generic string
+            return ('regex', None, {}, None, None, r'^[a-zA-Z0-9_\-]{1,50}$',
+                    f'{field_name} is a string field')
         
         # UUID fields
         if 'UUID' in field_type:
-            return 'sequence'
+            return ('sequence', None, {'format': 'uuid4'}, None, None, None,
+                    f'{field_name} is a UUID field')
         
         # Default
-        return 'distribution'
+        return ('distribution', 'uniform', {'min': 0, 'max': 100}, None, None, None,
+                f'{field_name} - default uniform distribution')
 
     def build_delta_fields(self) -> List[Dict[str, Any]]:
-        """Build delta_fields with sensible defaults."""
+        """Build delta_fields with proper strategy inference per field type."""
         unresolved = self.get_unresolved_fields()
         delta_fields = []
         
+        # Debug: log stripped fields count
+        resolved_count = sum(1 for table in self.skeleton.get('tables', [])
+                           for field in table.get('fields', [])
+                           if field.get('resolved_by') == 'phase_a')
+        print(f"DEBUG: Stripped {resolved_count} phase_a resolved fields before LLM processing")
+        
         for item in unresolved:
             field = item['field_spec']
-            strategy = self.infer_strategy(field, item['field_name'])
+            strategy, dist_type, params, min_val, max_val, pattern, rationale = \
+                self.infer_strategy_and_params(field, item['field_name'], item['table'])
             
             updates = {
                 'strategy': strategy,
                 'values': None,
                 'weights': None,
                 'weight_rationale': None,
-                'distribution': None,
-                'params': {},
-                'min': None,
-                'max': None,
-                'pattern': None,
+                'distribution': dist_type,
+                'params': params,
+                'min': min_val,
+                'max': max_val,
+                'pattern': pattern,
                 'nullable_rate': 0.0 if not field.get('nullable') else 0.05,
-                'rationale': f'Inferred {strategy} strategy for {item["field_name"]} based on type {field.get("type")}'
+                'rationale': rationale
             }
-            
-            # Set strategy-specific values
-            if strategy == 'distribution':
-                updates['distribution'] = 'normal'
-                updates['params'] = {'mean': 0, 'std_dev': 1}
-            elif strategy == 'date_range':
-                updates['min'] = '2015-01-01'
-                updates['max'] = '2025-12-31'
-            elif strategy == 'regex':
-                updates['pattern'] = '^[a-zA-Z0-9_-]{1,50}$'
-            elif strategy == 'sequence':
-                updates['params'] = {'format': 'uuid4'}
             
             delta_fields.append({
                 'table': item['table'],
@@ -123,35 +149,102 @@ class DistributionSpecEnricher:
         return delta_fields
 
     def build_row_count_distributions(self) -> List[Dict[str, Any]]:
-        """Build row_count_distributions for all non-derived/computed tables."""
+        """Build row_count_distributions for all non-derived/computed tables with entries array."""
         row_counts = []
         
         for table in self.skeleton.get('tables', []):
             if table['classification'] not in ['derived', 'computed']:
+                # Determine appropriate distribution based on table type
+                if table['classification'] == 'independent':
+                    # Root tables - larger counts
+                    distribution = 'normal'
+                    params = {'mean': 1000, 'std_dev': 100}
+                    rationale = f'{table["name"]} is independent - normal distribution with mean 1000'
+                else:
+                    # Dependent tables - smaller counts, per parent row
+                    distribution = 'poisson'
+                    params = {'lambda': 5}
+                    rationale = f'{table["name"]} is dependent - poisson distribution per parent'
+                
                 row_counts.append({
                     'table': table['name'],
-                    'distribution': 'normal',
-                    'params': {'mean': 1000, 'std_dev': 100},
-                    'rationale': f'Default normal distribution for {table["name"]}'
+                    'entries': [
+                        {
+                            'distribution': distribution,
+                            'params': params,
+                            'unit': 'per_parent_row' if table['classification'] == 'dependent' else 'total',
+                            'bounds': [1, 10000],
+                            'condition': None,
+                            'rationale': rationale
+                        }
+                    ]
                 })
         
         return row_counts
 
     def build_cross_field_rules(self) -> List[Dict[str, Any]]:
-        """Build cross_field_rules from domain hints."""
+        """Build explicit cross-field rules covering all required types."""
         rules = []
         
         for table in self.skeleton.get('tables', []):
-            # Use existing cross_field_rules from skeleton
-            if table.get('cross_field_rules'):
-                for rule in table['cross_field_rules']:
+            table_name = table['name']
+            fields = {f['name']: f for f in table.get('columns', [])}
+            
+            # 1. Temporal ordering rules - for tables with date fields
+            date_fields = [f for f in table.get('columns', []) 
+                          if 'DATE' in f.get('type', '').upper() or 'TIMESTAMP' in f.get('type', '').upper()]
+            if len(date_fields) >= 2:
+                rules.append({
+                    'table': table_name,
+                    'type': 'temporal_ordering',
+                    'rule': f'Ensure {date_fields[0]["name"]} <= {date_fields[1]["name"]} for temporal consistency',
+                    'fields_involved': [f['name'] for f in date_fields[:2]],
+                    'rationale': 'Temporal fields must follow logical ordering (e.g., created_date <= modified_date)'
+                })
+            
+            # 2. Sum constraint rules - for tables with amount/balance fields
+            amount_fields = [f for f in table.get('columns', [])
+                           if any(x in f['name'].lower() for x in ['amount', 'balance', 'total', 'sum'])]
+            if len(amount_fields) >= 2:
+                rules.append({
+                    'table': table_name,
+                    'type': 'sum_constraint',
+                    'rule': f'Sum of {", ".join([f["name"] for f in amount_fields[:-1]])} should equal {amount_fields[-1]["name"]}',
+                    'fields_involved': [f['name'] for f in amount_fields],
+                    'rationale': 'Financial amounts must satisfy sum constraints for data integrity'
+                })
+            
+            # 3. Conditional population rules - for tables with conditional groups
+            if table.get('conditional_groups'):
+                for group in table['conditional_groups']:
                     rules.append({
-                        'table': table['name'],
-                        'type': rule.get('type', 'consistency'),
-                        'rule': rule.get('rule', 'Consistency rule'),
-                        'fields_involved': rule.get('fields_involved', []),
-                        'rationale': rule.get('rationale', 'From schema')
+                        'table': table_name,
+                        'type': 'conditional_population',
+                        'rule': f'When {group.get("condition_field")} = {group.get("condition_value")}, populate {", ".join(group.get("fields", []))}',
+                        'fields_involved': [group.get('condition_field')] + group.get('fields', []),
+                        'rationale': f'Conditional group: {group.get("condition_field")} determines which fields are populated'
                     })
+            
+            # 4. Balance equation rules - for accounting/financial tables
+            if 'balance' in table_name.lower() or 'account' in table_name.lower():
+                rules.append({
+                    'table': table_name,
+                    'type': 'balance_equation',
+                    'rule': f'Maintain balance equation: debits + credits = total for {table_name}',
+                    'fields_involved': [f['name'] for f in table.get('columns', [])
+                                      if any(x in f['name'].lower() for x in ['debit', 'credit', 'balance', 'total'])],
+                    'rationale': 'Accounting tables must satisfy balance equations'
+                })
+            
+            # 5. Consistency rules - for all tables with foreign keys
+            if table.get('foreign_keys'):
+                rules.append({
+                    'table': table_name,
+                    'type': 'consistency',
+                    'rule': f'All foreign key references must point to valid parent rows',
+                    'fields_involved': [fk['from_field'] for fk in table['foreign_keys']],
+                    'rationale': 'Referential integrity: foreign keys must reference existing parent rows'
+                })
         
         return rules
 
