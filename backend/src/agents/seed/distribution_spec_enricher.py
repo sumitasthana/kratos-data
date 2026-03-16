@@ -13,20 +13,35 @@ class DistributionSpecEnricher:
     Uses field type and context to determine realistic strategies.
     """
 
-    def __init__(self, skeleton_path: str, data_dictionary_path: str):
+    def __init__(self, skeleton_path: str, data_dictionary_path: str, schema_graph_path: Optional[str] = None):
         self.skeleton_path = skeleton_path
         self.data_dictionary_path = data_dictionary_path
+        self.schema_graph_path = schema_graph_path or skeleton_path.replace('distribution_spec_skeleton', 'schema_graph')
         self.skeleton = None
         self.data_dictionary = None
+        self.schema_graph = None
         self.delta = None
+        self.field_types = {}  # Cache of table.field -> type
 
     def load_inputs(self) -> None:
-        """Load skeleton and data dictionary."""
+        """Load skeleton, schema_graph, and data dictionary."""
         with open(self.skeleton_path, 'r', encoding='utf-8') as f:
             self.skeleton = json.load(f)
 
         with open(self.data_dictionary_path, 'r', encoding='utf-8') as f:
             self.data_dictionary = f.read()
+        
+        # Load schema_graph to get field types
+        try:
+            with open(self.schema_graph_path, 'r', encoding='utf-8') as f:
+                self.schema_graph = json.load(f)
+                # Build field type cache
+                for table in self.schema_graph.get('tables', []):
+                    for col in table.get('columns', []):
+                        key = f"{table['name']}.{col['name']}"
+                        self.field_types[key] = col.get('type', 'UNKNOWN')
+        except FileNotFoundError:
+            print(f"WARNING: schema_graph not found at {self.schema_graph_path}, using field names for inference")
 
     def get_unresolved_fields(self) -> List[Dict[str, Any]]:
         """Extract all unresolved fields with context."""
@@ -49,7 +64,9 @@ class DistributionSpecEnricher:
         
         Returns: (strategy, distribution_type, params, min, max, pattern, rationale)
         """
-        field_type = field.get('type', '').upper()
+        # Get field type from cache (loaded from schema_graph)
+        cache_key = f"{table_name}.{field_name}"
+        field_type = self.field_types.get(cache_key, field.get('type', '')).upper()
         field_name_lower = field_name.lower()
         
         # Composite PK components
