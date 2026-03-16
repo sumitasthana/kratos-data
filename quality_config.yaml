@@ -1,0 +1,17 @@
+# quality_config.yaml — Kratos Data Quality Thresholds
+# Modify thresholds here without touching application code.
+
+# Completeness: minimum % of non-null/non-empty values per column
+completeness_threshold_pct: 95.0
+
+# Accuracy: minimum % of values passing domain / range rules
+accuracy_threshold_pct: 98.0
+
+# Validity: minimum % of values passing format / type checks
+validity_threshold_pct: 99.0
+
+# Uniqueness: maximum % of duplicate rows on primary key (account_id)
+uniqueness_max_dup_pct: 0.0
+
+# Timeliness: maximum age (days) of the most-recent record before flagging as stale
+timeliness_sla_days: 30

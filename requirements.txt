@@ -1,34 +1,37 @@
 # Kratos Data — Atomic Deposit System
 # Python 3.11+ | FDIC Part 370 / Part 330 compliant
 # Install: pip install -r requirements.txt
-# Requires: Python 3.11+
+# Requires: Python 3.11+  (tested on 3.13)
 #
 # Setup:
-#   python3.11 -m venv .venv
+#   python -m venv .venv
 #   .venv\Scripts\activate        # Windows PowerShell
 #   source .venv/bin/activate     # macOS/Linux
 #   pip install -r requirements.txt
 
 
 # ── Web Framework ─────────────────────────────────────────────
-fastapi==0.110.0
-uvicorn[standard]==0.29.0
+fastapi>=0.115.0                  # 3.13 wheels; compatible with pydantic v2
+uvicorn[standard]>=0.30.0
 
 
 # ── Database ──────────────────────────────────────────────────
-sqlalchemy[asyncio]==2.0.29
-asyncpg==0.29.0                   # PostgreSQL async driver (Python 3.11 wheel available)
+sqlalchemy[asyncio]>=2.0.35
+asyncpg>=0.30.0                   # 3.13 wheels first shipped in 0.30.0
 
 
 # ── Data Validation ───────────────────────────────────────────
-pydantic[email]==2.7.0
+pydantic[email]>=2.9.0            # 3.13 wheels first shipped in 2.9.0
 
 
 # ── Testing ───────────────────────────────────────────────────
-pytest==8.1.1
-pytest-asyncio==0.23.6
-httpx==0.27.0                     # AsyncClient for FastAPI test client
+pytest>=8.3.0
+pytest-asyncio>=0.24.0
+httpx>=0.27.0                     # AsyncClient for FastAPI test client
 
+# ── AI / KratosAI ─────────────────────────────────────────────
+anthropic>=0.28.0                 # Anthropic SDK — KratosAI engine
+openai>=1.30.0                    # OpenAI SDK — cost-optimised bulk generation
 
 # ── Development Utilities ─────────────────────────────────────
-python-dotenv==1.0.1              # Load DATABASE_URL from .env
+python-dotenv>=1.0.1              # Load DATABASE_URL from .env

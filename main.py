@@ -26,7 +26,7 @@ from typing import Annotated, Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import UUID4, BaseModel, Field, model_validator
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -57,6 +57,11 @@ from orc_engine import (
     VerificationMethodEnum,
     SMDIA,
 )
+from ai_engine import ai_generate, ai_analyze, ai_orc_advise, ai_chat_stream
+from integrity_validator import validate_generated_sql
+from stats_engine import ai_stats_summary, ai_stats_preview
+from quality_engine import compute_quality, quality_csv_header
+from quality_ai_agent import ai_quality_review
 
 
 # ---------------------------------------------------------------------------
@@ -738,3 +743,533 @@ async def compliance_summary(db: AsyncSession = Depends(get_db)) -> list[dict[st
 async def health() -> dict[str, str]:
     """Returns 200 OK when the API is running."""
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# KratosAI — request / response models
+# ---------------------------------------------------------------------------
+
+class AiGenerateRequest(BaseModel):
+    """Request body for POST /ai/generate (MODE 1 — Synthetic Data Generator)."""
+    entities:           list[str]       = Field(default_factory=lambda: ["party", "account"])
+    count:              dict[str, int]  = Field(default_factory=lambda: {"party": 5, "account": 8})
+    scenario:           str             = "clean"       # clean | edge_cases | violations | mixed
+    output_format:      str             = "sql"         # sql | json
+    include_violations: bool            = False
+    violation_types:    list[str]       = Field(default_factory=list)
+
+
+class AiAnalyzeRequest(BaseModel):
+    """Request body for POST /ai/analyze (MODE 2 — Compliance Analyst)."""
+    explain: bool = True
+
+
+class AiOrcAdviseRequest(BaseModel):
+    """Request body for POST /ai/orc-advise (MODE 3 — ORC Assignment Advisor)."""
+    account_type:          str
+    party_type:            str  = "Individual"
+    owner_count:           int  = Field(1, ge=1)
+    has_beneficiaries:     bool = False
+    has_pod_designation:   bool = False
+    has_irrevocable_trust: bool = False
+    is_government_entity:  bool = False
+    is_retirement_account: bool = False
+    is_hsa:                bool = False
+    is_iolta:              bool = False
+    notes:                 Optional[str] = None
+
+
+class ChatMessage(BaseModel):
+    """A single turn in a KratosAI conversation."""
+    role:    str = Field(..., pattern="^(user|assistant)$")
+    content: str = Field(..., min_length=1)
+
+
+class AiChatRequest(BaseModel):
+    """Request body for POST /ai/chat (streaming conversational interface)."""
+    messages: list[ChatMessage] = Field(..., min_length=1)
+
+
+# ---------------------------------------------------------------------------
+# KratosAI — shared DB context helper
+# ---------------------------------------------------------------------------
+
+async def _fetch_db_context(db: AsyncSession) -> str:
+    """
+    Fetch live record counts from the database and return them as a compact
+    string for injection into the KratosAI system prompt preamble.
+    """
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM party)                            AS party_count,
+                    (SELECT COUNT(*) FROM account)                          AS account_count,
+                    (SELECT COUNT(*) FROM account_ownership)                AS ownership_count,
+                    (SELECT COUNT(*) FROM account_regulatory_classification) AS orc_count,
+                    (SELECT COUNT(*) FROM deposit_insurance_calculation)    AS insurance_count,
+                    (SELECT COUNT(*) FROM kyc_cip_verification)             AS kyc_count
+                """
+            )
+        )
+    ).mappings().one()
+    return (
+        f"parties={row['party_count']}, accounts={row['account_count']}, "
+        f"ownership_rows={row['ownership_count']}, orc_classifications={row['orc_count']}, "
+        f"insurance_calculations={row['insurance_count']}, kyc_verifications={row['kyc_count']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# KratosAI endpoints
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/ai/generate",
+    summary="KratosAI MODE 1 — Generate synthetic deposit data",
+    tags=["KratosAI"],
+)
+async def ai_generate_endpoint(
+    body: AiGenerateRequest,
+    user_id: str = Depends(get_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Ask KratosAI to produce referentially consistent synthetic SQL/JSON test data.
+
+    After generation, the SQL is run through the integrity validator to confirm
+    all FK references are valid before returning.  The output is **not** auto-executed
+    against the database — execution remains the caller's responsibility so that
+    the watermark `-- SYNTHETIC TEST DATA — NOT FOR PRODUCTION USE` is preserved.
+
+    Per FDIC Part 370: synthetic data must honour the full ORC constraint graph.
+    """
+    try:
+        db_context = await _fetch_db_context(db)
+        generated = await ai_generate(body.model_dump(), db_context)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    # Run FK pre-check if SQL output was requested
+    validation = None
+    if body.output_format == "sql":
+        vr = await validate_generated_sql(generated, db)
+        validation = {
+            "valid":         vr.valid,
+            "checked_count": vr.checked_count,
+            "violations":    vr.violations,
+        }
+
+    return {
+        "generated_content": generated,
+        "output_format":     body.output_format,
+        "integrity_check":   validation,
+    }
+
+
+@app.post(
+    "/ai/analyze",
+    summary="KratosAI MODE 2 — Run live compliance analysis",
+    tags=["KratosAI"],
+)
+async def ai_analyze_endpoint(
+    body: AiAnalyzeRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Run all 10 audit controls against the live database, then pass the raw
+    findings to KratosAI for structured compliance analysis output.
+
+    Returns both the raw control results and the AI-enhanced findings with
+    severity ratings, regulatory citations, and remediation guidance.
+
+    Per FDIC Part 370 § 370.3(c): supports the annual end-to-end system test.
+    """
+    try:
+        db_context = await _fetch_db_context(db)
+        raw_controls = await run_all_controls(db)
+        findings_list = list(raw_controls.values())
+        analysis = await ai_analyze(findings_list, db_context)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {
+        "raw_control_results": findings_list,
+        "ai_analysis":         analysis,
+        "db_context":          db_context,
+    }
+
+
+@app.post(
+    "/ai/orc-advise",
+    summary="KratosAI MODE 3 — Recommend ORC code for an account profile",
+    tags=["KratosAI"],
+)
+async def ai_orc_advise_endpoint(
+    body: AiOrcAdviseRequest,
+) -> dict[str, Any]:
+    """
+    Given an account/party profile, KratosAI walks the FDIC Part 370
+    ORC Assignment Decision Tree and returns a recommended ORC code with
+    full reasoning, regulatory basis, and required follow-up records.
+
+    Per FDIC Part 370 § 370.3(b): ORC must be assigned at account opening.
+    """
+    try:
+        advice = await ai_orc_advise(body.model_dump())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {"profile": body.model_dump(), "orc_advice": advice}
+
+
+@app.post(
+    "/ai/chat",
+    summary="KratosAI — Streaming conversational interface",
+    tags=["KratosAI"],
+)
+async def ai_chat_endpoint(
+    body: AiChatRequest,
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Stream a conversational response from KratosAI.
+
+    The response is delivered as Server-Sent Events (SSE):
+      data: <JSON-encoded text chunk>\\n\\n
+      ...
+      data: [DONE]\\n\\n
+
+    Each `data:` payload is a JSON string (call JSON.parse on the client side).
+    A final `data: [DONE]` signals stream completion.
+    """
+    db_context = await _fetch_db_context(db)
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+
+    async def _event_stream():
+        try:
+            async for chunk in ai_chat_stream(messages, db_context):
+                yield f"data: {chunk}\n\n"
+            yield "data: [DONE]\n\n"
+        except RuntimeError as exc:
+            error_payload = __import__("json").dumps(f"ERROR: {exc}")
+            yield f"data: {error_payload}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stats & Preview endpoints
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/stats/summary",
+    summary="Kratos Stats Engine — structured compliance statistics",
+    tags=["Stats"],
+)
+async def stats_summary(
+    payload: dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Accept a stats-mode payload (entity counts + violations + ORC distribution)
+    and return a structured compliance statistics object.
+
+    Assembles live manifest counts from the database when the caller sends
+    an empty or partial manifest; merges with any additional payload fields
+    provided by the caller.
+
+    Per FDIC Part 370: statistics must reflect the current state of all 14 tables.
+    """
+    # Auto-populate manifest from live DB counts if not fully provided
+    manifest = payload.get("manifest") or {}
+    if not manifest:
+        row = (
+            await db.execute(
+                text(
+                    """
+                    SELECT
+                        (SELECT COUNT(*) FROM party)                             AS parties,
+                        (SELECT COUNT(*) FROM account)                           AS accounts,
+                        (SELECT COUNT(*) FROM account_ownership)                 AS account_ownership,
+                        (SELECT COUNT(*) FROM account_regulatory_classification) AS account_regulatory_classification,
+                        (SELECT COUNT(*) FROM kyc_cip_verification)              AS kyc_cip_verification,
+                        (SELECT COUNT(*) FROM deposit_insurance_calculation)     AS deposit_insurance_calculation
+                    """
+                )
+            )
+        ).mappings().one()
+        manifest = dict(row)
+
+    merged = {**payload, "manifest": manifest, "mode": "stats"}
+    try:
+        result = await ai_stats_summary(merged)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return result
+
+
+@app.post(
+    "/stats/preview",
+    summary="Kratos Stats Engine — annotated data preview with violation flags",
+    tags=["Stats"],
+)
+async def stats_preview(
+    payload: dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Accept a preview-mode payload (table name + raw rows) and return a
+    structured preview object with per-row violation flags.
+
+    FK checks are performed server-side via parameterised SQL so that the
+    full ID lists are never forwarded to the AI (prevents token overflow on
+    large datasets). Only the discovered violations are sent to Claude.
+
+    Per FDIC Part 370: data integrity checks must cover all FK relationships.
+    """
+    from sqlalchemy import bindparam
+
+    rows: list[dict[str, Any]] = payload.get("rows") or []
+    fk_violations: list[dict[str, Any]] = []
+
+    try:
+        # Collect unique UUID strings referenced in the preview rows
+        party_refs   = list({str(r["party_id"])   for r in rows if r.get("party_id")})
+        account_refs = list({str(r["account_id"]) for r in rows if r.get("account_id")})
+
+        if party_refs:
+            # Find which of the supplied party UUIDs do NOT exist in the DB
+            stmt = text(
+                "SELECT party_id::text FROM party "
+                "WHERE party_id::text = ANY(:refs)"
+            )
+            res  = await db.execute(stmt, {"refs": party_refs})
+            found = {r[0] for r in res.fetchall()}
+            for ref in party_refs:
+                if ref not in found:
+                    fk_violations.append({
+                        "column": "party_id", "value": ref,
+                        "code": "FK_MISSING_PARTY", "severity": "error",
+                    })
+
+        if account_refs:
+            stmt = text(
+                "SELECT account_id::text FROM account "
+                "WHERE account_id::text = ANY(:refs)"
+            )
+            res  = await db.execute(stmt, {"refs": account_refs})
+            found = {r[0] for r in res.fetchall()}
+            for ref in account_refs:
+                if ref not in found:
+                    fk_violations.append({
+                        "column": "account_id", "value": ref,
+                        "code": "FK_MISSING_ACCOUNT", "severity": "error",
+                    })
+    except Exception as exc:
+        # Non-fatal: skip FK pre-check on DB error; Claude will still annotate rows
+        fk_violations = [{"code": "FK_CHECK_ERROR", "detail": str(exc), "severity": "warn"}]
+
+    merged = {
+        "mode":          "preview",
+        "table":         payload.get("table", ""),
+        "rows":          rows,
+        "fk_violations": fk_violations,
+    }
+    try:
+        result = await ai_stats_preview(merged)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Quality AI Review endpoint
+# ---------------------------------------------------------------------------
+
+class _QualityReviewRequest(BaseModel):
+    quality_report: dict
+
+
+@app.post(
+    "/quality/review",
+    summary="AI-powered narrative review of a quality report",
+    tags=["Quality"],
+)
+async def quality_review(body: _QualityReviewRequest) -> dict:
+    """
+    Sends the quality report produced by /generate to the Kratos Quality
+    Review Agent (Claude). Returns a structured narrative that distinguishes
+    genuine data errors from config/schema drift, ranks issues, and provides
+    prioritised recommendations.
+    """
+    report = body.quality_report
+    if not report:
+        raise HTTPException(status_code=400, detail="quality_report must not be empty.")
+    try:
+        result = await ai_quality_review(report)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Quality review failed: {exc}")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Generate & Export endpoints  (minimal data-tool flow)
+# ---------------------------------------------------------------------------
+
+import csv
+import io
+import uuid as _uuid_mod
+from datetime import datetime as _dt
+
+# In-memory store: token -> {"columns": [...], "rows": [...], "generated_at": str, "quality": {...}}
+# Short-lived (process lifetime only) — suitable for demo/dev use.
+_GENERATE_STORE: dict[str, dict[str, Any]] = {}
+_LAST_GENERATE_TOKEN: str | None = None
+
+_GENERATE_SQL = """
+    SELECT
+        p.party_id::text                                    AS party_id,
+        COALESCE(
+            NULLIF(TRIM(COALESCE(p.individual_name_given,'') || ' ' ||
+                        COALESCE(p.individual_name_family,'')), ' '),
+            p.organization_legal_name,
+            'Unknown'
+        )                                                   AS name,
+        p.party_type::text                                  AS party_type,
+        p.party_status::text                                AS party_status,
+        a.account_id::text                                  AS account_id,
+        a.account_number                                    AS account_number,
+        a.account_type::text                                AS account_type,
+        a.account_status::text                              AS account_status,
+        a.current_balance::text                             AS current_balance,
+        a.account_open_date::text                           AS account_open_date,
+        COALESCE(c.orc_code::text, '')                      AS orc_code
+    FROM   party              p
+    JOIN   account            a  ON a.primary_owner_party_id = p.party_id
+    LEFT   JOIN account_regulatory_classification c
+                                  ON c.account_id = a.account_id
+    ORDER  BY a.account_open_date DESC, a.created_date DESC
+"""
+
+_RECORDS_COLUMNS = [
+    "party_id", "name", "party_type", "party_status",
+    "account_id", "account_number", "account_type", "account_status",
+    "current_balance", "account_open_date", "orc_code",
+]
+
+
+@app.post(
+    "/generate",
+    summary="Generate dataset snapshot from live DB",
+    tags=["Generate"],
+)
+async def generate_dataset(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """
+    Queries the live DB for a joined party+account dataset, stores it in a
+    short-lived in-memory buffer keyed by a signed token, and returns the
+    token plus the first 20 preview rows.
+    """
+    global _LAST_GENERATE_TOKEN
+    result = await db.execute(text(_GENERATE_SQL))
+    all_rows = [dict(zip(_RECORDS_COLUMNS, r)) for r in result.fetchall()]
+
+    generated_at    = _dt.utcnow().isoformat()
+    quality_report  = compute_quality(all_rows, generated_at)
+
+    token = str(_uuid_mod.uuid4())
+    _GENERATE_STORE[token] = {
+        "columns":      _RECORDS_COLUMNS,
+        "rows":         all_rows,
+        "generated_at": _dt.utcnow().strftime("%Y%m%d_%H%M"),
+        "quality":      quality_report,
+    }
+    _LAST_GENERATE_TOKEN = token
+
+    return {
+        "token":          token,
+        "total_rows":     len(all_rows),
+        "columns":        _RECORDS_COLUMNS,
+        "preview_rows":   all_rows[:20],
+        "generated_at":   _GENERATE_STORE[token]["generated_at"],
+        "quality_report": quality_report,
+    }
+
+
+@app.get(
+    "/generate/{token}/csv",
+    summary="Stream generated dataset as CSV",
+    tags=["Generate"],
+)
+async def download_csv(token: str = Path(..., description="Token from /generate")) -> StreamingResponse:
+    """
+    Stream the previously generated dataset as a CSV file.
+    Filename includes the generation timestamp for traceability.
+    """
+    entry = _GENERATE_STORE.get(token)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Token not found or expired. Re-run /generate.")
+
+    def _iter_csv():
+        if entry.get("quality"):
+            yield quality_csv_header(entry["quality"])
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(entry["columns"])
+        yield buf.getvalue()
+        for row in entry["rows"]:
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow([row.get(c, "") for c in entry["columns"]])
+            yield buf.getvalue()
+
+    filename = f"kratos_data_{entry['generated_at']}.csv"
+    return StreamingResponse(
+        _iter_csv(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get(
+    "/records",
+    summary="Read-only view of latest DB records",
+    tags=["Generate"],
+)
+async def get_records(
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Returns the latest `limit` (default 100, max 1000) rows from the joined
+    party+account view. Read-only; no write operations exposed.
+    """
+    safe_limit = min(max(1, limit), 1000)
+    result = await db.execute(text(_GENERATE_SQL + f" LIMIT {safe_limit}"))
+    rows = [dict(zip(_RECORDS_COLUMNS, r)) for r in result.fetchall()]
+
+    quality_summary: str | None = None
+    if _LAST_GENERATE_TOKEN and _LAST_GENERATE_TOKEN in _GENERATE_STORE:
+        qr = _GENERATE_STORE[_LAST_GENERATE_TOKEN].get("quality", {})
+        ts = _GENERATE_STORE[_LAST_GENERATE_TOKEN].get("generated_at", "")
+        overall = qr.get("overall", "").upper()
+        summary = qr.get("summary_line", "")
+        quality_summary = f"Last run: {ts} | Quality: {overall} — {summary}"
+
+    return {
+        "columns":         _RECORDS_COLUMNS,
+        "rows":            rows,
+        "total":           len(rows),
+        "quality_summary": quality_summary,
+    }

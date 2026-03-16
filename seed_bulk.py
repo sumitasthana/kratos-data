@@ -4,17 +4,41 @@ seed_bulk.py  —  Bulk seed script for Atomic Deposit System
 All column names verified against DDL v1.0
 """
 
-import asyncio, random, uuid
+import asyncio, random, uuid, os, re
 from datetime import date, timedelta
 
 import asyncpg
+from dotenv import load_dotenv
 
-# ── CONFIG ────────────────────────────────────────────────────────────────────
-DB_HOST    = "localhost"
-DB_PORT    = 5432
-DB_USER    = "postgres"
-DB_PASS    = "data@Incedo"
-DB_NAME    = "atomic_deposit_system"
+load_dotenv()  # reads .env from project root
+
+# ── CONFIG — reads from .env (falls back to defaults if not set) ─────────────
+def _parse_db_url(url: str):
+    """Extract host/port/user/pass/dbname from a DATABASE_URL."""
+    # postgresql+asyncpg://user:pass@host:port/dbname
+    m = re.match(
+        r"[^:]+://(?P<user>[^:]+):(?P<pass>[^@]+)@(?P<host>[^:/]+):?(?P<port>\d*)/(?P<db>.+)",
+        url,
+    )
+    if not m:
+        return None
+    from urllib.parse import unquote
+    return (
+        m.group("host"),
+        int(m.group("port") or 5432),
+        m.group("user"),
+        unquote(m.group("pass")),   # decode %40 -> @ etc.
+        m.group("db"),
+    )
+
+_db_url    = os.getenv("DATABASE_URL", "")
+_db_parsed = _parse_db_url(_db_url) if _db_url else None
+
+DB_HOST    = _db_parsed[0] if _db_parsed else "localhost"
+DB_PORT    = _db_parsed[1] if _db_parsed else 5432
+DB_USER    = _db_parsed[2] if _db_parsed else "postgres"
+DB_PASS    = _db_parsed[3] if _db_parsed else "CHANGE_ME"
+DB_NAME    = _db_parsed[4] if _db_parsed else "atomic_deposit_system"
 BATCH      = 500
 N_PARTIES  = 4000
 N_ACCOUNTS = 6000

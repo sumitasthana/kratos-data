@@ -1,648 +1,427 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 
 // ---------------------------------------------------------------------------
-// Shared helpers
+// API helpers
 // ---------------------------------------------------------------------------
 
 const API = '/api'
-const HEADERS = { 'Content-Type': 'application/json', 'X-User-ID': 'demo-user' }
 
 async function apiFetch(path, opts = {}) {
   const res = await fetch(`${API}${path}`, {
-    headers: HEADERS,
+    headers: { 'Content-Type': 'application/json', 'X-User-ID': 'demo-user' },
     ...opts,
   })
-  const json = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const msg = json?.detail
-      ? typeof json.detail === 'string'
-        ? json.detail
-        : JSON.stringify(json.detail)
-      : `HTTP ${res.status}`
-    throw new Error(msg)
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `HTTP ${res.status}`)
   }
-  return json
-}
-
-function fmt(val) {
-  if (val == null) return '—'
-  if (typeof val === 'number') return val.toLocaleString()
-  return String(val)
-}
-
-function fmtUSD(val) {
-  if (val == null) return '—'
-  return Number(val).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+  return res.json()
 }
 
 // ---------------------------------------------------------------------------
-// Small UI atoms
+// Minimal shared components
 // ---------------------------------------------------------------------------
 
-function Banner({ type, children }) {
-  const styles = {
-    success: 'bg-green-50 border border-green-300 text-green-800',
-    error:   'bg-red-50 border border-red-300 text-red-800',
-    info:    'bg-blue-50 border border-blue-300 text-blue-800',
-  }
+function StatusBadge({ text, type }) {
+  const cls = {
+    idle:    'text-gray-400',
+    working: 'text-amber-500 animate-pulse',
+    ready:   'text-emerald-600',
+    error:   'text-red-500',
+  }[type] || 'text-gray-400'
+  return <span className={`text-sm font-medium ${cls}`}>{text}</span>
+}
+
+function DataTable({ columns, rows }) {
+  if (!columns || !rows || rows.length === 0) return null
   return (
-    <div className={`rounded-lg p-4 text-sm font-medium mt-4 ${styles[type] ?? styles.info}`}>
-      {children}
-    </div>
-  )
-}
-
-function Field({ label, children }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}
-
-const inputCls =
-  'border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full'
-
-function Input({ ...props }) {
-  return <input className={inputCls} {...props} />
-}
-
-function Select({ children, ...props }) {
-  return (
-    <select className={inputCls} {...props}>
-      {children}
-    </select>
-  )
-}
-
-function Button({ loading, children, ...props }) {
-  return (
-    <button
-      className="mt-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
-      disabled={loading}
-      {...props}
-    >
-      {loading ? 'Working…' : children}
-    </button>
-  )
-}
-
-function InfoRow({ label, value, highlight }) {
-  return (
-    <div className="flex justify-between py-1 border-b border-gray-100 last:border-0">
-      <span className="text-xs text-gray-500 font-medium">{label}</span>
-      <span className={`text-sm font-semibold ${highlight ?? 'text-gray-800'}`}>{value}</span>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Tab 1 — Create Party
-// ---------------------------------------------------------------------------
-
-function CreatePartyTab({ onPartyCreated }) {
-  const [f, setF] = useState({
-    given: '', family: '', ssn: '', dob: '', city: '', state: '',
-  })
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState(null)
-
-  const update = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
-
-  async function submit(e) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setResult(null)
-    try {
-      const body = {
-        party_type:               'Individual',
-        party_status:             'Active',
-        individual_name_given:    f.given,
-        individual_name_family:   f.family,
-        individual_ssn:           f.ssn.replace(/\D/g, ''),
-        individual_date_of_birth: f.dob || null,
-        address_city:             f.city || null,
-        address_state_province:   f.state || null,
-        address_country:          'US',
-        created_by:               'demo-user',
-      }
-      const data = await apiFetch('/parties', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      })
-      setResult(data)
-      onPartyCreated(data.party_id)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="max-w-xl">
-      <h2 className="text-lg font-bold text-gray-800 mb-1">Create Individual Party</h2>
-      <p className="text-xs text-gray-500 mb-5">
-        Per FinCEN CIP (31 U.S.C. § 5318): customer identification before account opening.
-      </p>
-      <form onSubmit={submit} className="grid grid-cols-2 gap-4">
-        <Field label="Given Name *">
-          <Input value={f.given} onChange={update('given')} placeholder="Alice" required />
-        </Field>
-        <Field label="Family Name *">
-          <Input value={f.family} onChange={update('family')} placeholder="Walker" required />
-        </Field>
-        <Field label="SSN (9 digits) *">
-          <Input
-            value={f.ssn}
-            onChange={update('ssn')}
-            placeholder="123456789"
-            maxLength={9}
-            pattern="\d{9}"
-            title="Exactly 9 digits"
-            required
-            type="password"
-            autoComplete="off"
-          />
-        </Field>
-        <Field label="Date of Birth">
-          <Input value={f.dob} onChange={update('dob')} type="date" />
-        </Field>
-        <Field label="City">
-          <Input value={f.city} onChange={update('city')} placeholder="New York" />
-        </Field>
-        <Field label="State (2-letter)">
-          <Input value={f.state} onChange={update('state')} placeholder="NY" maxLength={2} />
-        </Field>
-        <div className="col-span-2">
-          <Button loading={loading} type="submit">Create Party</Button>
-        </div>
-      </form>
-
-      {result && (
-        <Banner type="success">
-          <p className="font-bold text-base mb-1">
-            Party created: {result.individual_name_given} {result.individual_name_family}
-          </p>
-          <p className="text-xs break-all">Party ID: <span className="font-mono">{result.party_id}</span></p>
-          <p className="text-xs mt-1 text-green-600">
-            ✓ This Party ID has been pre-filled in the "Open Account" tab.
-          </p>
-        </Banner>
-      )}
-      {error && <Banner type="error">{error}</Banner>}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Tab 2 — Open Account
-// ---------------------------------------------------------------------------
-
-const ACCOUNT_TYPE_MAP = {
-  Savings:   'Savings',
-  Checking:  'Checking',
-  'Money Market': 'Money Market',
-  'Certificate of Deposit': 'Certificate of Deposit',
-  IRA:       'Individual Retirement Account',
-  Trust:     'Trust Account',
-  Government:'Government Account',
-  Business:  'Business Account',
-}
-
-function OpenAccountTab({ prefillPartyId }) {
-  const today = new Date().toISOString().slice(0, 10)
-  const [f, setF] = useState({
-    partyId: prefillPartyId || '',
-    acctNum: '',
-    acctType: 'Savings',
-    balance: '10000.00',
-    openDate: today,
-  })
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState(null)
-
-  // Keep partyId in sync when parent passes new value
-  if (prefillPartyId && f.partyId !== prefillPartyId && f.partyId === '') {
-    setF((p) => ({ ...p, partyId: prefillPartyId }))
-  }
-
-  const update = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
-
-  async function submit(e) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setResult(null)
-    try {
-      const accountType = ACCOUNT_TYPE_MAP[f.acctType] ?? f.acctType
-      // Step 1 — create account (creates ownership + ORC + insurance internally)
-      const acct = await apiFetch('/accounts', {
-        method: 'POST',
-        body: JSON.stringify({
-          account_number:           f.acctNum,
-          account_type:             accountType,
-          account_open_date:        f.openDate,
-          primary_owner_party_id:   f.partyId,
-          current_balance:          parseFloat(f.balance),
-          current_balance_date:     f.openDate,
-          interest_rate_percentage: 0.025,
-          minimum_balance:          0,
-        }),
-      })
-      // Step 2 — fetch insurance calculation
-      const ins = await apiFetch(`/accounts/${acct.account_id}/insurance`)
-      setResult({ acct, ins })
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const { acct, ins } = result ?? {}
-  const fullyInsured = ins && Number(ins.calculated_uninsured_amount) === 0
-
-  return (
-    <div className="max-w-xl">
-      <h2 className="text-lg font-bold text-gray-800 mb-1">Open Deposit Account</h2>
-      <p className="text-xs text-gray-500 mb-5">
-        Per FDIC Part 370 § 370.3(b): ORC is auto-assigned and coverage calculated at opening.
-      </p>
-      <form onSubmit={submit} className="grid grid-cols-2 gap-4">
-        <Field label="Party ID (owner) *">
-          <Input
-            value={f.partyId}
-            onChange={update('partyId')}
-            placeholder="UUID from Create Party"
-            required
-          />
-        </Field>
-        <Field label="Account Number *">
-          <Input
-            value={f.acctNum}
-            onChange={update('acctNum')}
-            placeholder="CHK-000123"
-            required
-            maxLength={20}
-          />
-        </Field>
-        <Field label="Account Type *">
-          <Select value={f.acctType} onChange={update('acctType')}>
-            {Object.keys(ACCOUNT_TYPE_MAP).map((k) => (
-              <option key={k} value={k}>{k}</option>
+    <div className="overflow-x-auto rounded border border-gray-200">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            {columns.map(c => (
+              <th key={c} className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">
+                {c}
+              </th>
             ))}
-          </Select>
-        </Field>
-        <Field label="Opening Balance ($)">
-          <Input
-            value={f.balance}
-            onChange={update('balance')}
-            type="number"
-            min="0"
-            step="0.01"
-          />
-        </Field>
-        <Field label="Open Date">
-          <Input value={f.openDate} onChange={update('openDate')} type="date" />
-        </Field>
-        <div className="col-span-2">
-          <Button loading={loading} type="submit">Open Account &amp; Calculate Coverage</Button>
-        </div>
-      </form>
-
-      {acct && ins && (
-        <Banner type={fullyInsured ? 'success' : 'info'}>
-          <p className="font-bold text-base mb-3">
-            Account opened {fullyInsured ? '✓ Fully Insured' : '⚠ Partially Insured'}
-          </p>
-          <div className="space-y-1">
-            <InfoRow label="Account ID"   value={acct.account_id} />
-            <InfoRow label="Account No."  value={acct.account_number} />
-            <InfoRow label="Type"         value={acct.account_type} />
-            <InfoRow label="ORC Code"     value={acct.orc_code} />
-            <InfoRow label="Balance"      value={fmtUSD(acct.current_balance)} />
-            <InfoRow
-              label="Insured Amount"
-              value={fmtUSD(ins.calculated_insured_amount)}
-              highlight="text-green-700"
-            />
-            <InfoRow
-              label="Uninsured Amount"
-              value={fmtUSD(ins.calculated_uninsured_amount)}
-              highlight={!fullyInsured ? 'text-yellow-700' : 'text-gray-800'}
-            />
-          </div>
-        </Banner>
-      )}
-      {error && <Banner type="error">{error}</Banner>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+              {columns.map(c => (
+                <td key={c} className="px-3 py-2 text-gray-700 whitespace-nowrap font-mono">
+                  {String(row[c] ?? '')}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Tab 3 — Insurance Summary
+// Quality Panel
 // ---------------------------------------------------------------------------
 
-function InsuranceSummaryTab() {
-  const [accountId, setAccountId] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [data, setData] = useState(null)
-  const [acctData, setAcctData] = useState(null)
-  const [error, setError] = useState(null)
+const QUALITY_ICON  = { pass: '\u{1F7E2}', warn: '\u{1F7E1}', fail: '\u{1F534}' }
+const QUALITY_COLOR = {
+  pass: 'text-emerald-700',
+  warn: 'text-amber-600',
+  fail: 'text-red-600',
+}
+const DIM_BG = {
+  pass: '',
+  warn: 'bg-amber-50',
+  fail: 'bg-red-50',
+}
 
-  async function fetch_(e) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setData(null)
-    setAcctData(null)
+function QualityPanel({ quality }) {
+  if (!quality) return null
+
+  const [review, setReview]       = useState(null)
+  const [reviewing, setReviewing] = useState(false)
+  const [reviewErr, setReviewErr] = useState('')
+
+  async function handleAiReview() {
+    setReviewing(true)
+    setReviewErr('')
+    setReview(null)
     try {
-      const [ins, acct] = await Promise.all([
-        apiFetch(`/accounts/${accountId}/insurance`),
-        apiFetch(`/accounts/${accountId}`),
-      ])
-      setData(ins)
-      setAcctData(acct)
-    } catch (err) {
-      setError(err.message)
+      const r = await apiFetch('/quality/review', {
+        method: 'POST',
+        body: JSON.stringify({ quality_report: quality }),
+      })
+      setReview(r)
+    } catch (e) {
+      setReviewErr(e.message)
     } finally {
-      setLoading(false)
+      setReviewing(false)
     }
   }
 
-  const fullyInsured = data && Number(data.calculated_uninsured_amount) === 0
-  const partiallyInsured = data && !fullyInsured && Number(data.calculated_insured_amount) > 0
+  const VERDICT_COLOR = {
+    'Data is healthy':           'text-emerald-700',
+    'Data needs attention':      'text-amber-600',
+    'Data has critical issues':  'text-red-600',
+  }
 
   return (
-    <div className="max-w-xl">
-      <h2 className="text-lg font-bold text-gray-800 mb-1">Insurance Summary</h2>
-      <p className="text-xs text-gray-500 mb-5">
-        Per FDIC Part 370 § 370.3: coverage must be determinable on demand.
-      </p>
-      <form onSubmit={fetch_} className="flex gap-3 items-end">
-        <Field label="Account ID (UUID)">
-          <Input
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            pattern="[0-9a-fA-F-]{36}"
-            required
-            style={{ width: '340px' }}
-          />
-        </Field>
-        <Button loading={loading} type="submit">Fetch</Button>
-      </form>
-
-      {data && acctData && (
-        <div className={`mt-5 rounded-xl border-2 p-5 ${
-          fullyInsured
-            ? 'border-green-300 bg-green-50'
-            : partiallyInsured
-            ? 'border-yellow-300 bg-yellow-50'
-            : 'border-red-300 bg-red-50'
-        }`}>
-          <div className="flex items-center justify-between mb-4">
-            <span className="font-bold text-gray-800 text-base">
-              {acctData.account_number}
-            </span>
-            <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
-              fullyInsured
-                ? 'bg-green-200 text-green-800'
-                : partiallyInsured
-                ? 'bg-yellow-200 text-yellow-800'
-                : 'bg-red-200 text-red-800'
-            }`}>
-              {fullyInsured ? 'FULLY INSURED' : partiallyInsured ? 'PARTIALLY INSURED' : 'UNINSURED'}
-            </span>
-          </div>
-          <div className="space-y-1">
-            <InfoRow label="Account Type"    value={acctData.account_type} />
-            <InfoRow label="ORC Code"        value={data.input_orc} />
-            <InfoRow label="Current Balance" value={fmtUSD(acctData.current_balance)} />
-            <InfoRow label="Owners"          value={data.input_owner_count} />
-            {data.beneficiary_count != null && (
-              <InfoRow label="Beneficiaries" value={data.beneficiary_count} />
-            )}
-            <InfoRow
-              label="Insured Amount"
-              value={fmtUSD(data.calculated_insured_amount)}
-              highlight="text-green-700"
-            />
-            <InfoRow
-              label="Uninsured Amount"
-              value={fmtUSD(data.calculated_uninsured_amount)}
-              highlight={!fullyInsured ? 'text-yellow-700' : 'text-gray-400'}
-            />
-            <InfoRow label="Test Result"   value={data.calculation_test_result} />
-            <InfoRow label="Calc Date"     value={data.calculation_date} />
-            {data.calculation_basis_description && (
-              <div className="pt-2 text-xs text-gray-500 italic">
-                {data.calculation_basis_description}
+    <section className="mb-8">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+          Data Quality
+        </h2>
+        <span className={`text-xs font-semibold ${QUALITY_COLOR[quality.overall] || 'text-gray-500'}`}>
+          {QUALITY_ICON[quality.overall]} {quality.summary_line}
+        </span>
+        <button
+          onClick={handleAiReview}
+          disabled={reviewing}
+          className="ml-auto text-xs px-3 py-1 border border-gray-300 rounded-md
+                     text-gray-600 hover:bg-gray-50 active:scale-95 transition-all
+                     disabled:opacity-40"
+        >
+          {reviewing ? 'Reviewing…' : '✦ AI Review'}
+        </button>
+      </div>
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        {quality.dimensions.map((dim, i) => (
+          <div
+            key={dim.name}
+            className={`px-4 py-3 ${
+              i > 0 ? 'border-t border-gray-100' : ''
+            } ${DIM_BG[dim.status] || ''}`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-base">{QUALITY_ICON[dim.status]}</span>
+              <span className="w-32 text-sm font-medium text-gray-700">{dim.name}</span>
+              <span className="text-sm text-gray-600">{dim.value}</span>
+              <span className="ml-auto text-xs text-gray-400">threshold: {dim.threshold}</span>
+            </div>
+            {dim.details && dim.details.length > 0 && (
+              <div className="mt-2 ml-9 space-y-1">
+                {dim.details.map((d, di) => (
+                  <p key={di} className="text-xs text-gray-500 leading-relaxed">
+                    {d.recommendation}
+                  </p>
+                ))}
               </div>
             )}
           </div>
-        </div>
+        ))}
+      </div>
+
+      {/* AI Review result */}
+      {reviewErr && (
+        <p className="mt-3 text-xs text-red-500">{reviewErr}</p>
       )}
-      {error && <Banner type="error">{error}</Banner>}
-    </div>
-  )
-}
+      {review && (
+        <div className="mt-4 border border-gray-200 rounded-lg p-5 bg-gray-50 space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">AI Verdict</span>
+            <span className={`text-sm font-semibold ${VERDICT_COLOR[review.verdict] || 'text-gray-700'}`}>
+              {review.verdict}
+            </span>
+            {review.config_drift_detected && (
+              <span className="ml-auto text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                Config drift detected
+              </span>
+            )}
+          </div>
 
-// ---------------------------------------------------------------------------
-// Tab 4 — Audit Log
-// ---------------------------------------------------------------------------
+          <p className="text-sm text-gray-700 leading-relaxed">{review.executive_summary}</p>
 
-const AUDIT_TABLES = ['party', 'account', 'account_ownership',
-  'account_regulatory_classification', 'deposit_insurance_calculation']
+          {review.config_drift_explanation && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              {review.config_drift_explanation}
+            </p>
+          )}
 
-function AuditLogTab() {
-  const [tableName, setTableName] = useState('party')
-  const [recordId, setRecordId] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [rows, setRows] = useState(null)
-  const [error, setError] = useState(null)
-
-  async function fetch_(e) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setRows(null)
-    try {
-      const data = await apiFetch(`/audit-log/${tableName}/${recordId}`)
-      setRows(data)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div>
-      <h2 className="text-lg font-bold text-gray-800 mb-1">Audit Log</h2>
-      <p className="text-xs text-gray-500 mb-5">
-        Per FDIC Part 370 § 370.3 &amp; 12 U.S.C. § 1831p-1: all data changes are captured.
-      </p>
-      <form onSubmit={fetch_} className="flex flex-wrap gap-3 items-end">
-        <Field label="Table">
-          <Select value={tableName} onChange={(e) => setTableName(e.target.value)} style={{ width: '220px' }}>
-            {AUDIT_TABLES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Record ID (UUID)">
-          <Input
-            value={recordId}
-            onChange={(e) => setRecordId(e.target.value)}
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            pattern="[0-9a-fA-F-]{36}"
-            required
-            style={{ width: '340px' }}
-          />
-        </Field>
-        <Button loading={loading} type="submit">Fetch Log</Button>
-      </form>
-
-      {rows !== null && (
-        <div className="mt-5">
-          {rows.length === 0 ? (
-            <Banner type="info">No audit log entries found for this record.</Banner>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full text-xs">
-                <thead className="bg-gray-50 text-gray-500 uppercase tracking-wide">
-                  <tr>
-                    {['Event Time','Operation','Column','Old Value','New Value','Changed By'].map((h) => (
-                      <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {rows.map((r) => (
-                    <tr key={r.audit_log_id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">
-                        {new Date(r.changed_date).toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={`px-2 py-0.5 rounded-full font-semibold ${
-                          r.change_type === 'INSERT'
-                            ? 'bg-green-100 text-green-700'
-                            : r.change_type === 'UPDATE'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}>
-                          {r.change_type}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-gray-700">{fmt(r.column_name)}</td>
-                      <td className="px-3 py-2 text-gray-500 max-w-xs truncate" title={r.old_value ?? ''}>
-                        {fmt(r.old_value)}
-                      </td>
-                      <td className="px-3 py-2 text-gray-800 max-w-xs truncate" title={r.new_value ?? ''}>
-                        {fmt(r.new_value)}
-                      </td>
-                      <td className="px-3 py-2 text-gray-600">{fmt(r.changed_by)}</td>
-                    </tr>
+          {review.dimension_reviews?.some(d => d.diagnosis) && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Dimension Diagnoses</p>
+              <div className="space-y-2">
+                {review.dimension_reviews
+                  .filter(d => d.diagnosis)
+                  .sort((a, b) => a.priority - b.priority)
+                  .map((d, i) => (
+                    <div key={i} className="flex gap-2 text-xs text-gray-600">
+                      <span className="shrink-0">{QUALITY_ICON[d.status]}</span>
+                      <span>
+                        <strong>{d.name}</strong>
+                        {d.is_false_positive && (
+                          <span className="ml-1 text-amber-600 font-medium">(likely false positive)</span>
+                        )}
+                        {' — '}{d.diagnosis}
+                      </span>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-              <p className="text-xs text-gray-400 px-3 py-2 border-t border-gray-100">
-                {rows.length} row{rows.length !== 1 ? 's' : ''} — newest first
-              </p>
+              </div>
+            </div>
+          )}
+
+          {review.top_recommendations?.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Top Recommendations</p>
+              <ol className="list-decimal list-inside space-y-1">
+                {review.top_recommendations.map((rec, i) => (
+                  <li key={i} className="text-xs text-gray-600 leading-relaxed">{rec}</li>
+                ))}
+              </ol>
             </div>
           )}
         </div>
       )}
-      {error && <Banner type="error">{error}</Banner>}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Page 1: Generate
+// ---------------------------------------------------------------------------
+
+function GeneratePage({ onGenerated }) {
+  const [status, setStatus] = useState({ text: 'Ready', type: 'idle' })
+
+  async function handleGenerate() {
+    setStatus({ text: 'Generating...', type: 'working' })
+    const validatingTimer = setTimeout(
+      () => setStatus({ text: 'Validating...', type: 'working' }),
+      800
+    )
+    try {
+      const data = await apiFetch('/generate', { method: 'POST' })
+      clearTimeout(validatingTimer)
+      setStatus({ text: 'Ready', type: 'idle' })
+      onGenerated(data)
+    } catch (e) {
+      clearTimeout(validatingTimer)
+      setStatus({ text: e.message, type: 'error' })
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-8 px-6">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Kratos Data</h1>
+        <p className="text-sm text-gray-400 mt-1">FDIC Part 370 / Part 330 — Atomic Deposit System</p>
+      </div>
+
+      <button
+        onClick={handleGenerate}
+        disabled={status.type === 'working'}
+        className="px-10 py-4 bg-gray-900 text-white text-base font-semibold rounded-xl
+                   hover:bg-gray-700 active:scale-95 transition-all
+                   disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+      >
+        Generate Data
+      </button>
+
+      <StatusBadge text={status.text} type={status.type} />
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Root App
+// Page 2: Preview + Download + Records
 // ---------------------------------------------------------------------------
 
-const TABS = [
-  { id: 'party',     label: '1  Create Party' },
-  { id: 'account',   label: '2  Open Account' },
-  { id: 'insurance', label: '3  Insurance Summary' },
-  { id: 'audit',     label: '4  Audit Log' },
-]
+function PreviewPage({ data, onBack }) {
+  const [toast, setToast]           = useState('')
+  const [records, setRecords]       = useState(null)
+  const [recLoading, setRecLoading] = useState(false)
+  const [recError, setRecError]     = useState('')
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState('party')
-  const [lastPartyId, setLastPartyId] = useState('')
+  const hasFail = data.quality_report?.overall === 'fail'
 
-  function handlePartyCreated(id) {
-    setLastPartyId(id)
+  function showToast(msg) {
+    setToast(msg)
+    setTimeout(() => setToast(''), 2500)
+  }
+
+  function handleDownload() {
+    const url = `${API}/generate/${data.token}/csv`
+    const a   = document.createElement('a')
+    a.href    = url
+    a.download = `kratos_data_${data.generated_at}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    showToast('Download started')
+  }
+
+  async function handleViewRecords() {
+    setRecLoading(true)
+    setRecError('')
+    try {
+      const r = await apiFetch('/records?limit=100')
+      setRecords(r)
+    } catch (e) {
+      setRecError(e.message)
+    } finally {
+      setRecLoading(false)
+    }
+  }
+
+  async function handleRefresh() {
+    setRecLoading(true)
+    setRecError('')
+    try {
+      const r = await apiFetch('/records?limit=100')
+      setRecords(r)
+    } catch (e) {
+      setRecError(e.message)
+    } finally {
+      setRecLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-indigo-700 text-white shadow-lg">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Kratos Data</h1>
-            <p className="text-xs text-indigo-200 mt-0.5">
-              FDIC Part 370 / Part 330 — Atomic Deposit System
-            </p>
-          </div>
-          <span className="text-xs bg-indigo-800 px-3 py-1 rounded-full text-indigo-200 font-mono">
-            demo-user
-          </span>
-        </div>
-      </header>
+    <div className="min-h-screen bg-white px-6 py-10 max-w-6xl mx-auto">
 
-      {/* Tab bar */}
-      <div className="max-w-5xl mx-auto px-6 mt-6">
-        <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-200 w-fit">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                activeTab === t.id
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm px-5 py-2 rounded-full shadow-md z-50">
+          {toast}
         </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Kratos Data</h1>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {data.total_rows.toLocaleString()} rows &times; {data.columns.length} columns &middot; {data.generated_at}
+          </p>
+        </div>
+        <button
+          onClick={onBack}
+          className="text-sm text-gray-400 hover:text-gray-700 underline underline-offset-2"
+        >
+          &larr; Back
+        </button>
       </div>
 
-      {/* Content */}
-      <main className="max-w-5xl mx-auto px-6 py-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-          {activeTab === 'party' && (
-            <CreatePartyTab onPartyCreated={handlePartyCreated} />
-          )}
-          {activeTab === 'account' && (
-            <OpenAccountTab prefillPartyId={lastPartyId} />
-          )}
-          {activeTab === 'insurance' && <InsuranceSummaryTab />}
-          {activeTab === 'audit'     && <AuditLogTab />}
-        </div>
-      </main>
+      {/* Preview */}
+      <section className="mb-8">
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+          Preview &mdash; first {data.preview_rows.length} rows
+        </h2>
+        <DataTable columns={data.columns} rows={data.preview_rows} />
+      </section>
 
-      {/* Footer */}
-      <footer className="text-center text-xs text-gray-400 py-6">
-        Kratos Data — FDIC Part 370 Compliant Demo &nbsp;·&nbsp; API on{' '}
-        <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer"
-           className="text-indigo-500 hover:underline">
-          localhost:8000/docs
-        </a>
-      </footer>
+      {/* Quality Panel */}
+      <QualityPanel quality={data.quality_report} />
+
+      {/* CSV quality warning */}
+      {hasFail && (
+        <p className="mb-3 text-sm text-red-600 font-medium">
+          Quality issues detected &mdash; review recommendations before downloading.
+        </p>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-3 mb-10">
+        <button
+          onClick={handleDownload}
+          className="px-6 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg
+                     hover:bg-gray-700 active:scale-95 transition-all shadow-sm"
+        >
+          Download CSV
+        </button>
+        <button
+          onClick={handleViewRecords}
+          disabled={recLoading}
+          className="px-6 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium
+                     rounded-lg hover:bg-gray-50 active:scale-95 transition-all
+                     disabled:opacity-40"
+        >
+          {recLoading ? 'Loading...' : 'View Stored Records'}
+        </button>
+      </div>
+
+      {/* Stored records */}
+      {(records || recError) && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+                Stored Records {records ? `— ${records.total} rows` : ''}
+              </h2>
+              {records?.quality_summary && (
+                <p className="text-xs text-gray-400 mt-0.5">{records.quality_summary}</p>
+              )}
+            </div>
+            {records && (
+              <button
+                onClick={handleRefresh}
+                disabled={recLoading}
+                className="text-xs text-gray-400 hover:text-gray-700 underline underline-offset-2"
+              >
+                {recLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            )}
+          </div>
+          {recError && <p className="text-sm text-red-500">{recError}</p>}
+          {records && <DataTable columns={records.columns} rows={records.rows} />}
+        </section>
+      )}
     </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Root
+// ---------------------------------------------------------------------------
+
+export default function App() {
+  const [generated, setGenerated] = useState(null)
+
+  if (generated) {
+    return <PreviewPage data={generated} onBack={() => setGenerated(null)} />
+  }
+  return <GeneratePage onGenerated={setGenerated} />
 }
