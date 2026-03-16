@@ -203,13 +203,17 @@ class DistributionSpecEnricher:
         """Build explicit cross-field rules covering all required types."""
         rules = []
         
+        # Get schema_graph tables for field type info
+        schema_tables = {t['name']: t for t in self.schema_graph.get('tables', [])} if self.schema_graph else {}
+        
         for table in self.skeleton.get('tables', []):
             table_name = table['name']
-            fields = {f['name']: f for f in table.get('columns', [])}
+            schema_table = schema_tables.get(table_name, {})
+            schema_columns = {c['name']: c for c in schema_table.get('columns', [])}
             
-            # 1. Temporal ordering rules - for tables with date fields
-            date_fields = [f for f in table.get('columns', []) 
-                          if 'DATE' in f.get('type', '').upper() or 'TIMESTAMP' in f.get('type', '').upper()]
+            # 1. Temporal ordering rules - for tables with 2+ date fields
+            date_fields = [c for c in schema_table.get('columns', []) 
+                          if 'DATE' in c.get('type', '').upper() or 'TIMESTAMP' in c.get('type', '').upper()]
             if len(date_fields) >= 2:
                 rules.append({
                     'table': table_name,
@@ -219,9 +223,9 @@ class DistributionSpecEnricher:
                     'rationale': 'Temporal fields must follow logical ordering (e.g., created_date <= modified_date)'
                 })
             
-            # 2. Sum constraint rules - for tables with amount/balance fields
-            amount_fields = [f for f in table.get('columns', [])
-                           if any(x in f['name'].lower() for x in ['amount', 'balance', 'total', 'sum'])]
+            # 2. Sum constraint rules - for tables with 2+ amount/balance fields
+            amount_fields = [c for c in schema_table.get('columns', [])
+                           if any(x in c['name'].lower() for x in ['amount', 'balance', 'total', 'sum'])]
             if len(amount_fields) >= 2:
                 rules.append({
                     'table': table_name,
@@ -244,12 +248,13 @@ class DistributionSpecEnricher:
             
             # 4. Balance equation rules - for accounting/financial tables
             if 'balance' in table_name.lower() or 'account' in table_name.lower():
+                balance_fields = [c['name'] for c in schema_table.get('columns', [])
+                                if any(x in c['name'].lower() for x in ['debit', 'credit', 'balance', 'total'])]
                 rules.append({
                     'table': table_name,
                     'type': 'balance_equation',
                     'rule': f'Maintain balance equation: debits + credits = total for {table_name}',
-                    'fields_involved': [f['name'] for f in table.get('columns', [])
-                                      if any(x in f['name'].lower() for x in ['debit', 'credit', 'balance', 'total'])],
+                    'fields_involved': balance_fields if balance_fields else [],
                     'rationale': 'Accounting tables must satisfy balance equations'
                 })
             
