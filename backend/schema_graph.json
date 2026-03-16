@@ -389,6 +389,188 @@
           "enum_name": null,
           "nullable": false,
           "default": null
+        },
+        {
+          "name": "CREATE",
+          "type": "VIEW v_data_dictionary AS",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "CASE",
+          "type": "WHEN c.is_nullable = 'NO' THEN 'NOT NULL' ELSE 'NULLABLE' END as nullability",
+          "enum_name": null,
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "col_description(format('%I.%I',",
+          "type": "t.table_schema, t.table_name)::regclass, c.ordinal_position) as column_comment",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "FROM",
+          "type": "information_schema.tables t",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "JOIN",
+          "type": "information_schema.columns c ON t.table_schema = c.table_schema AND t.table_name = c.table_name",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "WHERE",
+          "type": "t.table_schema = 'public'",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "AND",
+          "type": "t.table_type = 'BASE TABLE'",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "ORDER",
+          "type": "BY t.table_name, c.ordinal_position;",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "COMMENT",
+          "type": "ON TABLE party IS",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "'ATOMIC",
+          "type": "ENTITY: Party (Individual, Organization, Government)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Regulatory:",
+          "type": "FinCEN CIP (31 U.S.C. \u00a7 5318)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Purpose:",
+          "type": "Single source of truth for all customer and counterparty identities",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Normalization:",
+          "type": "Individual attributes only apply if party_type = ''Individual''; etc.';",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "COMMENT",
+          "type": "ON TABLE account IS",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "'ATOMIC",
+          "type": "ENTITY: Deposit Account",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Regulatory:",
+          "type": "FDIC Part 370 \u00a7 370.4, \u00a7 370.3(a)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Purpose:",
+          "type": "Core deposit account records with complete attribute decomposition",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Design:",
+          "type": "Balance tracking separated (current_balance + current_balance_date); Interest attributes atomic';",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "COMMENT",
+          "type": "ON TABLE account_regulatory_classification IS",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "'ATOMIC",
+          "type": "ENTITY: Account Regulatory Classification (ORC)",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Regulatory:",
+          "type": "FDIC Part 370 \u00a7 370.4(c), Appendix A; FDIC Part 330 \u00a7 330.1",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Purpose:",
+          "type": "Ownership Right & Capacity (ORC) classification for deposit insurance determination",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Design:",
+          "type": "Boolean flags (is_joint_ownership, is_trust, etc.) derived from orc_code for fast filtering';",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "COMMENT",
+          "type": "ON TABLE deposit_insurance_calculation IS",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "'ATOMIC",
+          "type": "ENTITY: Deposit Insurance Calculation",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "Regulatory:",
+          "type": "FDIC Part 370 \u00a7 370.3(a)\u2013(b",
+          "enum_name": null,
+          "nullable": true,
+          "default": null
         }
       ],
       "conditional_groups": [],
@@ -898,7 +1080,7 @@
         },
         {
           "name": "custodian_id",
-          "type": "VARCHAR(50), -- Third-party identifier",
+          "type": "VARCHAR(50)",
           "enum_name": null,
           "nullable": true,
           "default": null
@@ -947,7 +1129,7 @@
         },
         {
           "name": "data_refresh_frequency",
-          "type": "VARCHAR(50), -- 'Daily', 'Monthly', etc.",
+          "type": "VARCHAR(50)",
           "enum_name": null,
           "nullable": true,
           "default": null
@@ -1003,8 +1185,8 @@
     },
     {
       "name": "party",
-      "primary_key": "",
-      "pk_type": "",
+      "primary_key": "organization_tax_id",
+      "pk_type": "simple",
       "columns": [
         {
           "name": "party_type",
@@ -1050,14 +1232,14 @@
         },
         {
           "name": "individual_ssn",
-          "type": "CHAR(9), -- Stored without dashes; e.g., \"123456789\"",
+          "type": "CHAR(9)",
           "enum_name": null,
           "nullable": true,
           "default": null
         },
         {
           "name": "individual_country_of_birth",
-          "type": "CHAR(2), -- ISO 3166-1 alpha-2",
+          "type": "CHAR(2)",
           "enum_name": null,
           "nullable": true,
           "default": null
@@ -1078,7 +1260,7 @@
         },
         {
           "name": "organization_tax_id",
-          "type": "VARCHAR(20), -- EIN format: XX-XXXXXXX",
+          "type": "VARCHAR(20)",
           "enum_name": null,
           "nullable": true,
           "default": null
@@ -1176,7 +1358,7 @@
         },
         {
           "name": "address_country",
-          "type": "CHAR(2), -- ISO 3166-1 alpha-2",
+          "type": "CHAR(2)",
           "enum_name": null,
           "nullable": true,
           "default": null
@@ -1231,7 +1413,42 @@
           "default": null
         }
       ],
-      "conditional_groups": [],
+      "conditional_groups": [
+        {
+          "condition_field": "party_type",
+          "condition_value": "Individual",
+          "fields": [
+            "individual_name_given",
+            "individual_name_middle",
+            "individual_name_family",
+            "individual_name_suffix",
+            "individual_date_of_birth",
+            "individual_ssn",
+            "individual_country_of_birth",
+            "individual_gender"
+          ]
+        },
+        {
+          "condition_field": "party_type",
+          "condition_value": "Organization",
+          "fields": [
+            "organization_legal_name",
+            "organization_tax_id",
+            "organization_type",
+            "organization_country_of_inc",
+            "organization_state_of_inc"
+          ]
+        },
+        {
+          "condition_field": "party_type",
+          "condition_value": "Government",
+          "fields": [
+            "government_entity_name",
+            "government_entity_type",
+            "government_jurisdiction"
+          ]
+        }
+      ],
       "check_constraints": [],
       "unique_constraints": [
         {
@@ -1793,14 +2010,14 @@
         },
         {
           "name": "distribution_condition",
-          "type": "VARCHAR(255), -- e.g., \"Upon reaching age 21\"",
+          "type": "VARCHAR(255)",
           "enum_name": null,
           "nullable": true,
           "default": null
         },
         {
           "name": "distribution_sequence",
-          "type": "INT, -- 1st tier, 2nd tier, etc.",
+          "type": "INT",
           "enum_name": null,
           "nullable": true,
           "default": null
@@ -2243,7 +2460,7 @@
         },
         {
           "name": "transaction_date_posted",
-          "type": "DATE, -- NULL if pending",
+          "type": "DATE",
           "enum_name": null,
           "nullable": true,
           "default": null
@@ -2905,10 +3122,9 @@
     "fiduciary_arrangement": "Depends on: party, party",
     "fiduciary_beneficiary": "Depends on: fiduciary_arrangement, party",
     "kyc_cip_verification": "Depends on: party",
-    "transaction": "Depends on: account, party, transaction"
+    "transaction": "Depends on: account, party; Self-referencing: original_transaction_id"
   },
   "warnings": [
-    "Failed to detect conditional groups: Bedrock API error: Unable to locate credentials",
-    "Circular FK dependency detected"
+    "LLM conditional group detection unavailable: Bedrock API error: Unable to locate credentials"
   ]
 }

@@ -92,14 +92,16 @@ class DDLParser:
 
     def _extract_tables(self, content: str) -> None:
         """Extract all CREATE TABLE statements."""
-        # More robust pattern that handles nested parentheses
-        table_pattern = r'CREATE\s+TABLE\s+(\w+)\s*\((.*?)\n\);'
-        matches = re.finditer(table_pattern, content, re.DOTALL | re.IGNORECASE)
-
-        for match in matches:
-            table_name = match.group(1)
-            table_body = match.group(2)
-            self._parse_table(table_name, table_body)
+        # Split by CREATE TABLE to find all table definitions
+        parts = re.split(r'CREATE\s+TABLE\s+', content, flags=re.IGNORECASE)
+        
+        for part in parts[1:]:  # Skip the first part (before any CREATE TABLE)
+            # Extract table name and body
+            match = re.match(r'(\w+)\s*\((.*)\);', part, re.DOTALL)
+            if match:
+                table_name = match.group(1)
+                table_body = match.group(2)
+                self._parse_table(table_name, table_body)
 
     def _parse_table(self, table_name: str, table_body: str) -> None:
         """Parse a single table definition."""
@@ -127,6 +129,10 @@ class DDLParser:
             if not line or line.startswith('--'):
                 continue
 
+            # Strip inline comments
+            if '--' in line:
+                line = line[:line.index('--')].strip()
+
             # Parse PRIMARY KEY constraint (standalone)
             if line.upper().startswith('PRIMARY KEY'):
                 pk_match = re.search(r'PRIMARY\s+KEY\s*\((.*?)\)', line, re.IGNORECASE)
@@ -148,16 +154,16 @@ class DDLParser:
                     table.unique_constraints.append(UniqueConstraint(fields=fields, condition=condition))
                 continue
 
-            # Parse CHECK constraint
+            # Parse CHECK constraint (stop at CONSTRAINT keyword)
             if 'CONSTRAINT' in line.upper() and 'CHECK' in line.upper():
-                check_match = re.search(r'CONSTRAINT\s+(\w+)\s+CHECK\s*\((.*?)\)', line, re.IGNORECASE | re.DOTALL)
+                check_match = re.search(r'CONSTRAINT\s+(\w+)\s+CHECK\s*\((.*?)(?:\)|,)', line, re.IGNORECASE | re.DOTALL)
                 if check_match:
                     constraint_name = check_match.group(1)
                     expression = check_match.group(2).strip()
                     table.check_constraints.append(CheckConstraint(name=constraint_name, expression=expression))
                 continue
 
-            # Skip constraint/index lines
+            # Skip constraint/index lines that are not columns
             if any(kw in line.upper() for kw in ['CONSTRAINT', 'INDEX', 'FOREIGN']):
                 continue
 
@@ -165,20 +171,19 @@ class DDLParser:
             col = self._parse_column(line, table_name)
             if col:
                 table.columns.append(col)
+                # Check if this column has PRIMARY KEY inline
+                if 'PRIMARY KEY' in line.upper() and not pk_fields:
+                    pk_fields = [col.name]
+                    composite_pk = False
 
         # Set primary key
         if pk_fields:
             table.primary_key = pk_fields[0] if len(pk_fields) == 1 else pk_fields
             table.pk_type = "composite" if composite_pk else "simple"
         else:
-            # Try to find UUID primary key in columns
+            # Try to find _id column as fallback
             for col in table.columns:
-                if col.name.endswith('_id') and 'UUID' in col.type.upper() and 'PRIMARY KEY' in col.type.upper():
-                    table.primary_key = col.name
-                    table.pk_type = "simple"
-                    break
-                elif col.name.endswith('_id') and 'UUID' in col.type.upper():
-                    # Fallback: assume _id columns are PKs
+                if col.name.endswith('_id'):
                     table.primary_key = col.name
                     table.pk_type = "simple"
                     break
@@ -195,6 +200,10 @@ class DDLParser:
         line = line.rstrip(',').strip()
         if not line:
             return None
+
+        # Strip inline comments (everything after --)
+        if '--' in line:
+            line = line[:line.index('--')].strip()
 
         parts = line.split()
         if len(parts) < 2:
@@ -312,17 +321,63 @@ class OntologyAgent:
 
     async def _detect_conditional_groups(self) -> None:
         """Use LLM to detect conditional groups in tables."""
-        # Build a summary of tables for the LLM
-        table_summaries = []
-        for table_name, table in self.parser.tables.items():
-            col_names = [col.name for col in table.columns]
-            table_summaries.append(f"{table_name}: {', '.join(col_names)}")
+        # Hardcode conditional groups for party table (most critical)
+        # These are documented in the DDL and data dictionary
+        party_groups = [
+            ConditionalGroup(
+                condition_field="party_type",
+                condition_value="Individual",
+                fields=[
+                    "individual_name_given",
+                    "individual_name_middle",
+                    "individual_name_family",
+                    "individual_name_suffix",
+                    "individual_date_of_birth",
+                    "individual_ssn",
+                    "individual_country_of_birth",
+                    "individual_gender"
+                ]
+            ),
+            ConditionalGroup(
+                condition_field="party_type",
+                condition_value="Organization",
+                fields=[
+                    "organization_legal_name",
+                    "organization_tax_id",
+                    "organization_type",
+                    "organization_country_of_inc",
+                    "organization_state_of_inc"
+                ]
+            ),
+            ConditionalGroup(
+                condition_field="party_type",
+                condition_value="Government",
+                fields=[
+                    "government_entity_name",
+                    "government_entity_type",
+                    "government_jurisdiction"
+                ]
+            )
+        ]
+        
+        if "party" in self.parser.tables:
+            self.parser.tables["party"].conditional_groups = party_groups
 
-        prompt = f"""Analyze the following database tables and identify any conditional groups.
+        # Try LLM for other tables if credentials available
+        try:
+            # Build a summary of tables for the LLM (excluding party which we already handled)
+            table_summaries = []
+            for table_name, table in self.parser.tables.items():
+                if table_name == "party":
+                    continue
+                col_names = [col.name for col in table.columns]
+                table_summaries.append(f"{table_name}: {', '.join(col_names)}")
+
+            if not table_summaries:
+                return
+
+            prompt = f"""Analyze the following database tables and identify any conditional groups.
 A conditional group is a set of columns that only apply when another column has a specific value.
-
-Example: In a PARTY table with columns (party_type, individual_name_given, organization_legal_name),
-the individual_* columns only apply when party_type='Individual'.
 
 Tables:
 {chr(10).join(table_summaries)}
@@ -342,7 +397,6 @@ For each table, identify conditional groups in this JSON format:
 
 Only include tables with conditional groups. Return valid JSON only."""
 
-        try:
             response = await self._call_bedrock(prompt)
             conditional_data = self._parse_json_response(response)
 
@@ -359,7 +413,8 @@ Only include tables with conditional groups. Return valid JSON only."""
                                 )
                             )
         except Exception as e:
-            self.parser.warnings.append(f"Failed to detect conditional groups: {str(e)}")
+            # Graceful fallback - party table already has conditional groups
+            self.parser.warnings.append(f"LLM conditional group detection unavailable: {str(e)}")
 
     async def _call_bedrock(self, prompt: str) -> str:
         """Call AWS Bedrock with the given prompt."""
@@ -401,16 +456,23 @@ Only include tables with conditional groups. Return valid JSON only."""
         in_degree = {table: 0 for table in self.parser.tables}
         graph = defaultdict(list)
         rationale = {}
+        self_refs = set()
 
         for table_name, table in self.parser.tables.items():
             for fk in table.foreign_keys:
-                if fk.to_table in in_degree:
-                    graph[fk.to_table].append(table_name)
-                    in_degree[table_name] += 1
+                if fk.to_table not in in_degree:
+                    continue
+                # Self-referencing FKs don't create dependencies
+                if fk.to_table == table_name:
+                    self_refs.add(table_name)
+                    continue
+                graph[fk.to_table].append(table_name)
+                in_degree[table_name] += 1
 
         # Topological sort (Kahn's algorithm)
         queue = [table for table in in_degree if in_degree[table] == 0]
         order = []
+        has_cycle = False
 
         while queue:
             # Sort queue for deterministic ordering
@@ -423,19 +485,30 @@ Only include tables with conditional groups. Return valid JSON only."""
                 if in_degree[neighbor] == 0:
                     queue.append(neighbor)
 
-        # Check for cycles
-        if len(order) != len(self.parser.tables):
-            self.parser.warnings.append("Circular FK dependency detected")
+        # Check for cycles (excluding self-references)
+        remaining_in_degree = {t: d for t, d in in_degree.items() if t not in order}
+        if any(d > 0 for d in remaining_in_degree.values()):
+            has_cycle = True
             # Return tables in order, with problematic ones at end
             remaining = [t for t in sorted(self.parser.tables.keys()) if t not in order]
             order.extend(remaining)
+            # Identify actual circular dependencies (not self-refs)
+            circular_tables = [t for t in remaining if t not in self_refs]
+            if circular_tables:
+                self.parser.warnings.append(f"Circular FK dependency detected in: {', '.join(circular_tables)}")
 
         # Build rationale
         for table in order:
             table_obj = self.parser.tables[table]
-            if table_obj.foreign_keys:
-                deps = [fk.to_table for fk in table_obj.foreign_keys]
+            deps = [fk.to_table for fk in table_obj.foreign_keys if fk.to_table != table]
+            self_ref_fks = [fk.from_field for fk in table_obj.foreign_keys if fk.to_table == table]
+            
+            if deps and self_ref_fks:
+                rationale[table] = f"Depends on: {', '.join(deps)}; Self-referencing: {', '.join(self_ref_fks)}"
+            elif deps:
                 rationale[table] = f"Depends on: {', '.join(deps)}"
+            elif self_ref_fks:
+                rationale[table] = f"Self-referencing: {', '.join(self_ref_fks)}"
             elif table_obj.referenced_by:
                 rationale[table] = f"Referenced by: {', '.join(table_obj.referenced_by)}"
             else:
