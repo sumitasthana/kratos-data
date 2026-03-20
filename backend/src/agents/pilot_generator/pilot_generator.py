@@ -46,6 +46,7 @@ class PilotGenerator:
         self.row_counts = {}
         self.tables_generated = []
         self.tables_skipped = []
+        self.parent_registry = {}  # FK parent registry: table_name -> {pk_field: [values]}
         
         # Set random seed for reproducibility
         random.seed(self.random_seed)
@@ -78,14 +79,28 @@ class PilotGenerator:
                 rows = self._generate_table(table, table_map, row_count)
                 self.generated_data[table_name] = rows
                 self.tables_generated.append(table_name)
+                
+                # Populate parent_registry for FK resolution
+                pk_field = table.get('primary_key')
+                if pk_field and rows:
+                    self.parent_registry[table_name] = {
+                        'pk_field': pk_field,
+                        'values': [row.get(pk_field) for row in rows]
+                    }
             
             # Write CSV files
             self._write_csv_files()
             
-            # Build manifest
+            # Build manifest with only generated tables in row_counts
             status = 'success' if not self.warnings else 'partial'
             if self.errors:
                 status = 'failed'
+            
+            # Only include row counts for generated tables
+            generated_row_counts = {
+                table_name: self.row_counts.get(table_name, 0)
+                for table_name in self.tables_generated
+            }
             
             manifest = {
                 'run_id': str(uuid.uuid4()),
@@ -94,7 +109,7 @@ class PilotGenerator:
                 'distribution_spec_hash': self._compute_spec_hash(),
                 'tables_generated': self.tables_generated,
                 'tables_skipped': self.tables_skipped,
-                'row_counts': self.row_counts,
+                'row_counts': generated_row_counts,
                 'warnings': self.warnings,
                 'errors': self.errors,
                 'status': status,
@@ -105,6 +120,13 @@ class PilotGenerator:
         except Exception as e:
             logger.error("Pilot generator failed", exc_info=True)
             self.errors.append(str(e))
+            
+            # Only include row counts for generated tables
+            generated_row_counts = {
+                table_name: self.row_counts.get(table_name, 0)
+                for table_name in self.tables_generated
+            }
+            
             return {
                 'run_id': str(uuid.uuid4()),
                 'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -112,7 +134,7 @@ class PilotGenerator:
                 'distribution_spec_hash': self._compute_spec_hash(),
                 'tables_generated': self.tables_generated,
                 'tables_skipped': self.tables_skipped,
-                'row_counts': self.row_counts,
+                'row_counts': generated_row_counts,
                 'warnings': self.warnings,
                 'errors': self.errors,
                 'status': 'failed',
@@ -172,22 +194,29 @@ class PilotGenerator:
                 self.row_counts[table_name] = self.base_counts.get(table_name, 1)
 
     def _find_parent_table(self, table: dict, table_map: dict) -> Optional[str]:
-        """Find parent table for a dependent table."""
-        # Look for foreign key references
-        for fk in table.get('foreign_keys', []):
-            parent_name = fk.get('to_table')
-            if parent_name and parent_name in table_map:
-                return parent_name
+        """Find parent table for a dependent table by inferring from FK fields."""
+        # Look for FK fields and infer parent table from field names
+        for field in table.get('fields', []):
+            if field.get('strategy') == 'foreign_key':
+                parent_name = self._infer_parent_table_from_field(field['name'], table_map)
+                if parent_name:
+                    return parent_name
         return None
 
     def _infer_parent_table_from_field(self, field_name: str, table_map: dict) -> Optional[str]:
-        """Infer parent table from FK field name (e.g., account_id -> account)."""
-        # Remove common suffixes
+        """Infer parent table from FK field name (e.g., account_id -> account, primary_owner_party_id -> party)."""
+        # Try removing common suffixes
         for suffix in ['_id', '_key', '_ref']:
             if field_name.endswith(suffix):
                 potential_parent = field_name[:-len(suffix)]
                 if potential_parent in table_map:
                     return potential_parent
+        
+        # Try matching against table names directly (e.g., primary_owner_party_id contains 'party')
+        for table_name in table_map.keys():
+            if table_name in field_name:
+                return table_name
+        
         return None
 
     def _generate_table(self, table: dict, table_map: dict, row_count: int) -> List[dict]:
@@ -195,32 +224,27 @@ class PilotGenerator:
         rows = []
         table_name = table['name']
         
-        # Build parent data map for FK resolution by inferring from field names
-        parent_data = {}
+        # Check FK and computed fields and log warnings once
         for field in table.get('fields', []):
-            if field.get('strategy') == 'foreign_key':
-                # Infer parent table from field name (e.g., account_id -> account)
-                field_name = field['name']
+            field_name = field['name']
+            strategy = field.get('strategy')
+            
+            if strategy == 'foreign_key':
                 parent_name = self._infer_parent_table_from_field(field_name, table_map)
                 
-                if parent_name:
-                    if parent_name not in self.generated_data:
-                        # Parent table not generated — skip this table
-                        self.warnings.append(
-                            f"Parent table {parent_name} not in smoke_test_tables — skipping {table_name}"
-                        )
-                        return []
-                    
-                    # Build parent data map
-                    if parent_name not in parent_data:
-                        parent_table = table_map.get(parent_name)
-                        if parent_table:
-                            pk_field = parent_table.get('primary_key')
-                            if pk_field:
-                                parent_data[parent_name] = {
-                                    'pk_field': pk_field,
-                                    'values': [row.get(pk_field) for row in self.generated_data[parent_name]]
-                                }
+                if parent_name and parent_name not in self.parent_registry:
+                    self.warnings.append(
+                        f"FK field {table_name}.{field_name} references {parent_name} which was not generated"
+                    )
+                elif not parent_name:
+                    self.warnings.append(
+                        f"FK field {table_name}.{field_name} could not infer parent table"
+                    )
+            
+            elif strategy == 'computed':
+                self.warnings.append(
+                    f"Computed strategy not implemented for {table_name}.{field_name}"
+                )
         
         # Generate rows
         for i in range(row_count):
@@ -228,7 +252,7 @@ class PilotGenerator:
             for field in table.get('fields', []):
                 field_name = field['name']
                 value = self._generate_field_value(
-                    field, table, row, parent_data, table_name
+                    field, table, row, table_name
                 )
                 row[field_name] = value
             rows.append(row)
@@ -240,7 +264,6 @@ class PilotGenerator:
         field: dict,
         table: dict,
         current_row: dict,
-        parent_data: dict,
         table_name: str,
     ) -> Any:
         """Generate a value for a field."""
@@ -258,18 +281,16 @@ class PilotGenerator:
         elif strategy == 'foreign_key':
             # Infer parent table from field name
             field_name = field['name']
-            parent_name = self._infer_parent_table_from_field(field_name, {t['name']: t for t in self.spec.get('tables', [])})
+            table_map = {t['name']: t for t in self.spec.get('tables', [])}
+            parent_name = self._infer_parent_table_from_field(field_name, table_map)
             
-            if parent_name and parent_name in parent_data:
-                parent_info = parent_data[parent_name]
+            if parent_name and parent_name in self.parent_registry:
+                parent_info = self.parent_registry[parent_name]
                 values = parent_info['values']
                 if values:
                     return random.choice(values)
             
-            # FK field but no parent data available
-            self.warnings.append(
-                f"FK field {table_name}.{field_name} has no parent data available"
-            )
+            # FK field but no parent data available — set to null (don't log per row)
             return None
         
         elif strategy == 'enum':
@@ -314,15 +335,12 @@ class PilotGenerator:
             return None
         
         elif strategy == 'computed':
-            self.warnings.append(f"Computed strategy not implemented for {table_name}.{field['name']}")
             return None
         
         elif strategy is None:
-            self.warnings.append(f"Null strategy for {table_name}.{field['name']}")
             return None
         
         else:
-            self.warnings.append(f"Unknown strategy {strategy} for {table_name}.{field['name']}")
             return None
         
         # Apply nullable_rate
