@@ -22,6 +22,7 @@ try:
 except ImportError:
     rstr = None
 
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -59,6 +60,17 @@ class PilotGenerator:
             # Build table lookup
             table_map = {t['name']: t for t in self.spec.get('tables', [])}
             
+            # Load schema_graph for primary key information
+            schema_graph_path = os.path.join(os.path.dirname(__file__), '../../..', 'outputs', 'schema_graph.json')
+            schema_graph = {}
+            if os.path.exists(schema_graph_path):
+                with open(schema_graph_path, 'r', encoding='utf-8') as f:
+                    schema_graph_data = json.load(f)
+                    schema_graph = {t['name']: t for t in schema_graph_data.get('tables', [])}
+                    logger.info(f"Loaded schema_graph with {len(schema_graph)} tables")
+            else:
+                logger.warning(f"schema_graph.json not found at {schema_graph_path}")
+            
             # Calculate row counts
             self._calculate_row_counts(table_map)
             
@@ -80,13 +92,23 @@ class PilotGenerator:
                 self.generated_data[table_name] = rows
                 self.tables_generated.append(table_name)
                 
-                # Populate parent_registry for FK resolution
-                pk_field = table.get('primary_key')
+                # Populate parent_registry for FK resolution using schema_graph primary key
+                pk_field = None
+                if table_name in schema_graph:
+                    pk_field = schema_graph[table_name].get('primary_key')
+                
+                # Handle composite primary keys - use first field for FK resolution
+                if isinstance(pk_field, list) and len(pk_field) > 0:
+                    pk_field = pk_field[0]
+                
                 if pk_field and rows:
-                    self.parent_registry[table_name] = {
+                    registry_key = table_name.lower().strip()
+                    pk_values = [row.get(pk_field) for row in rows]
+                    self.parent_registry[registry_key] = {
                         'pk_field': pk_field,
-                        'values': [row.get(pk_field) for row in rows]
+                        'values': pk_values
                     }
+                    logger.info(f"Populated parent_registry['{registry_key}'] with {len(pk_values)} {pk_field} values")
             
             # Write CSV files
             self._write_csv_files()
@@ -284,11 +306,15 @@ class PilotGenerator:
             table_map = {t['name']: t for t in self.spec.get('tables', [])}
             parent_name = self._infer_parent_table_from_field(field_name, table_map)
             
-            if parent_name and parent_name in self.parent_registry:
-                parent_info = self.parent_registry[parent_name]
-                values = parent_info['values']
-                if values:
-                    return random.choice(values)
+            if parent_name:
+                # Normalize lookup key
+                lookup_key = parent_name.lower().strip()
+                
+                if lookup_key in self.parent_registry:
+                    parent_info = self.parent_registry[lookup_key]
+                    values = parent_info['values']
+                    if values:
+                        return random.choice(values)
             
             # FK field but no parent data available — set to null (don't log per row)
             return None
