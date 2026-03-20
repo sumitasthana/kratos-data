@@ -270,6 +270,22 @@ class EvalAgent:
         rules_evaluated = 0
         rules_passed = 0
         
+        # Debug: count rules with enforcement == validator
+        validator_rules_count = 0
+        all_rules_count = 0
+        for table_name, table in self.table_map.items():
+            for rule in table.get('cross_field_rules', []):
+                all_rules_count += 1
+                if rule.get('enforcement') == 'validator':
+                    validator_rules_count += 1
+        
+        logger.info(f"Cross-field rules debug: {validator_rules_count} validator rules, {all_rules_count} total rules")
+        
+        # Fallback: if no validator rules found, evaluate all rules and log warning
+        evaluate_all_rules = validator_rules_count == 0 and all_rules_count > 0
+        if evaluate_all_rules:
+            logger.warning("No enforcement tags found on cross-field rules. Evaluating ALL rules as fallback.")
+        
         for table_name, table in self.table_map.items():
             if table_name in self.skip_tables or table_name not in self.csv_data:
                 continue
@@ -278,7 +294,8 @@ class EvalAgent:
             
             # Evaluate cross-field rules
             for rule in table.get('cross_field_rules', []):
-                if rule.get('enforcement') != 'validator':
+                # Skip non-validator rules only if validator rules exist
+                if not evaluate_all_rules and rule.get('enforcement') != 'validator':
                     continue
                 
                 rules_evaluated += 1
@@ -465,7 +482,13 @@ class EvalAgent:
         return violations
 
     def _stage_1_distribution_similarity(self) -> None:
-        """Check distribution similarity for numeric and enum fields."""
+        """Check distribution similarity for numeric and enum fields.
+        
+        Issue 2 — Lognormal Parameterization:
+        - numpy.random.lognormal(mean, sigma) expects LOG-SPACE mean (μ)
+        - If spec param is named "mean" treat it as log-space μ
+        - If spec param is named "actual_mean" convert: μ = log(actual_mean)
+        """
         logger.info("Checking distribution similarity")
         
         results = []
@@ -504,7 +527,18 @@ class EvalAgent:
                         actual_min = min(values)
                         actual_max = max(values)
                         
+                        # Determine expected mean based on distribution type and param names
                         expected_mean = params.get('mean', 0)
+                        
+                        # For lognormal: if param is "actual_mean", convert to log-space
+                        if dist_type == 'lognormal' and 'actual_mean' in params:
+                            actual_mean_param = params.get('actual_mean')
+                            if actual_mean_param and actual_mean_param > 0:
+                                expected_mean = np.log(actual_mean_param) if np else actual_mean_param
+                                logger.info(f"Lognormal {table_name}.{field_name}: actual_mean param {actual_mean_param} converted to log-space μ={expected_mean}")
+                        elif dist_type == 'lognormal' and 'mean' in params:
+                            # "mean" is already in log-space
+                            logger.info(f"Lognormal {table_name}.{field_name}: mean param {expected_mean} treated as log-space μ")
                         
                         # Check mean deviation
                         mean_deviation = abs(actual_mean - expected_mean) / expected_mean if expected_mean != 0 else 0
@@ -513,10 +547,12 @@ class EvalAgent:
                         if flagged:
                             flags += 1
                         
+                        # Issue 3 — Include ALL fields in results (not just flagged)
                         results.append({
                             'table': table_name,
                             'field': field_name,
                             'strategy': strategy,
+                            'distribution_type': dist_type,
                             'expected': {
                                 'distribution': dist_type,
                                 'mean': expected_mean,
@@ -565,10 +601,12 @@ class EvalAgent:
                     if flagged:
                         flags += 1
                     
+                    # Issue 3 — Include ALL fields in results (not just flagged)
                     results.append({
                         'table': table_name,
                         'field': field_name,
                         'strategy': strategy,
+                        'distribution_type': 'enum',
                         'expected': {'values': values, 'weights': weights},
                         'actual': dict(value_counts),
                         'deviation': 0.0,
@@ -584,7 +622,7 @@ class EvalAgent:
         )
         self.report['summary']['distribution_flags'] = flags
         
-        logger.info(f"Distribution similarity: {pass_rate:.2%} pass rate, {flags} flags")
+        logger.info(f"Distribution similarity: {pass_rate:.2%} pass rate, {flags} flags, {len(results)} fields evaluated")
 
     def _stage_2_llm_judge(self) -> None:
         """Run LLM judge evaluation on sampled rows."""
@@ -615,10 +653,12 @@ class EvalAgent:
             # Build prompt
             field_descriptions = []
             for field in table.get('fields', []):
+                nullable_rate = field.get('nullable_rate', 0)
+                nullable = (nullable_rate or 0) > 0
                 field_descriptions.append({
                     'name': field['name'],
                     'strategy': field.get('strategy'),
-                    'nullable': field.get('nullable_rate', 0) > 0
+                    'nullable': nullable
                 })
             
             user_prompt = f"""
@@ -653,9 +693,16 @@ Return JSON only.
                 judge_result['table'] = table_name
                 
                 table_results.append(judge_result)
-                quality_scores.append(judge_result.get('quality_score', 0))
                 
-                logger.info(f"LLM Judge for {table_name}: quality_score={judge_result.get('quality_score')}")
+                # Extract quality score safely
+                quality_score = judge_result.get('quality_score')
+                if quality_score is not None:
+                    try:
+                        quality_scores.append(int(quality_score))
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid quality_score for {table_name}: {quality_score}")
+                
+                logger.info(f"LLM Judge for {table_name}: quality_score={quality_score}")
             
             except Exception as e:
                 logger.warning(f"LLM Judge failed for {table_name}: {e}")
@@ -665,8 +712,8 @@ Return JSON only.
         
         self.report['stages']['llm_judge']['table_results'] = table_results
         self.report['stages']['llm_judge']['average_quality_score'] = avg_quality
-        self.report['stages']['llm_judge']['llm_quality_warning'] = avg_quality < 6.0
-        self.report['summary']['llm_quality_warning'] = avg_quality < 6.0
+        self.report['stages']['llm_judge']['llm_quality_warning'] = avg_quality < 6.0 if quality_scores else False
+        self.report['summary']['llm_quality_warning'] = avg_quality < 6.0 if quality_scores else False
         
         logger.info(f"LLM Judge complete: average quality score = {avg_quality:.1f}")
 
