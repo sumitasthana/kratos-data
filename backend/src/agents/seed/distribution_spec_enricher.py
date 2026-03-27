@@ -94,8 +94,8 @@ class DistributionSpecEnricher:
         if 'INT' in field_type or 'NUMERIC' in field_type or 'DECIMAL' in field_type or 'FLOAT' in field_type:
             # Check for balance/amount fields - use lognormal
             if any(x in field_name_lower for x in ['balance', 'amount', 'total', 'sum', 'value']):
-                return ('distribution', 'lognormal', {'mean': 5, 'std_dev': 2}, None, None, None,
-                        f'{field_name} is a financial amount - using lognormal distribution')
+                return ('distribution', 'lognormal', {'mu': 5, 'sigma': 2}, None, None, None,
+                        f'{field_name} is a financial amount - using lognormal distribution (mu/sigma in log-space)')
             # Check for count/quantity fields - use poisson
             if any(x in field_name_lower for x in ['count', 'quantity', 'number', 'num_']):
                 return ('distribution', 'poisson', {'lambda': 10}, None, None, None,

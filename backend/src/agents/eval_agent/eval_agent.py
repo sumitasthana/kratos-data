@@ -35,7 +35,9 @@ You are NOT re-checking constraint rules — focus only on:
 3. Conditional correctness: are conditional fields populated appropriately?
 4. Overall quality score: integer 0-10
 
-Return ONLY valid JSON. No markdown, no commentary."""
+Return ONLY valid JSON with these exact keys:
+{"quality_score": <integer 0-10>, "realism": <integer 0-10>, "anomalies": [...], "conditional_correctness": <integer 0-10>}
+No markdown fences, no commentary."""
 
 
 class EvalAgent:
@@ -144,10 +146,13 @@ class EvalAgent:
                 logger.info("Stage 2: Running LLM Judge")
                 self._stage_2_llm_judge()
             
+            # Aggregate summary counts across all stages
+            self._aggregate_summary_counts()
+
             # Stage 3: Pass/Fail signal
             logger.info("Stage 3: Computing pass/fail signal")
             self._stage_3_pass_fail_signal()
-            
+
             # Write report
             self._write_report()
             
@@ -508,7 +513,7 @@ class EvalAgent:
                     # Numeric distribution check
                     dist_type = field.get('distribution')
                     params = field.get('params', {})
-                    
+
                     values = []
                     null_count = 0
                     for row in rows:
@@ -520,88 +525,145 @@ class EvalAgent:
                                 pass
                         else:
                             null_count += 1
-                    
+
                     if values:
                         actual_mean = statistics.mean(values)
                         actual_std = statistics.stdev(values) if len(values) > 1 else 0
                         actual_min = min(values)
                         actual_max = max(values)
-                        
-                        # Determine expected mean based on distribution type and param names
-                        expected_mean = params.get('mean', 0)
-                        
-                        # For lognormal: if param is "actual_mean", convert to log-space
-                        if dist_type == 'lognormal' and 'actual_mean' in params:
-                            actual_mean_param = params.get('actual_mean')
-                            if actual_mean_param and actual_mean_param > 0:
-                                expected_mean = np.log(actual_mean_param) if np else actual_mean_param
-                                logger.info(f"Lognormal {table_name}.{field_name}: actual_mean param {actual_mean_param} converted to log-space μ={expected_mean}")
-                        elif dist_type == 'lognormal' and 'mean' in params:
-                            # "mean" is already in log-space
-                            logger.info(f"Lognormal {table_name}.{field_name}: mean param {expected_mean} treated as log-space μ")
-                        
-                        # Check mean deviation
-                        mean_deviation = abs(actual_mean - expected_mean) / expected_mean if expected_mean != 0 else 0
-                        flagged = mean_deviation > 0.20
-                        
-                        if flagged:
-                            flags += 1
-                        
-                        # Issue 3 — Include ALL fields in results (not just flagged)
-                        results.append({
-                            'table': table_name,
-                            'field': field_name,
-                            'strategy': strategy,
-                            'distribution_type': dist_type,
-                            'expected': {
-                                'distribution': dist_type,
-                                'mean': expected_mean,
-                                'params': params
-                            },
-                            'actual': {
-                                'mean': actual_mean,
-                                'std': actual_std,
-                                'min': actual_min,
-                                'max': actual_max,
-                                'null_count': null_count
-                            },
-                            'deviation': mean_deviation,
-                            'flagged': flagged
-                        })
+
+                        if dist_type == 'lognormal':
+                            # Lognormal: compare in log-space
+                            # Spec should have mu/sigma (log-space). Fall back to mean/std_dev for old specs.
+                            expected_mu = params.get('mu', params.get('mean', 0))
+                            expected_sigma = params.get('sigma', params.get('std_dev', 1))
+
+                            # Compute actual log-space statistics
+                            positive_values = [v for v in values if v > 0]
+                            if positive_values and np:
+                                log_values = [np.log(v) for v in positive_values]
+                                actual_log_mean = statistics.mean(log_values)
+                                actual_log_std = statistics.stdev(log_values) if len(log_values) > 1 else 0
+
+                                mean_deviation = abs(actual_log_mean - expected_mu) / abs(expected_mu) if expected_mu != 0 else 0
+                                flagged = mean_deviation > 0.20
+
+                                logger.info(
+                                    f"Lognormal {table_name}.{field_name}: "
+                                    f"spec mu={expected_mu} sigma={expected_sigma}, "
+                                    f"actual log-mean={actual_log_mean:.3f} log-std={actual_log_std:.3f}, "
+                                    f"deviation={mean_deviation:.3f}"
+                                )
+                            else:
+                                mean_deviation = 0.0
+                                flagged = False
+                                actual_log_mean = None
+                                actual_log_std = None
+
+                            if flagged:
+                                flags += 1
+
+                            results.append({
+                                'table': table_name,
+                                'field': field_name,
+                                'strategy': strategy,
+                                'distribution_type': dist_type,
+                                'expected': {
+                                    'distribution': dist_type,
+                                    'mu': expected_mu,
+                                    'sigma': expected_sigma,
+                                    'params': params
+                                },
+                                'actual': {
+                                    'mean': actual_mean,
+                                    'std': actual_std,
+                                    'log_mean': actual_log_mean,
+                                    'log_std': actual_log_std,
+                                    'min': actual_min,
+                                    'max': actual_max,
+                                    'null_count': null_count
+                                },
+                                'deviation': mean_deviation,
+                                'flagged': flagged
+                            })
+                        else:
+                            # Non-lognormal distributions: compare actual-space mean
+                            expected_mean = params.get('mean', 0)
+
+                            mean_deviation = abs(actual_mean - expected_mean) / abs(expected_mean) if expected_mean != 0 else 0
+                            flagged = mean_deviation > 0.20
+
+                            if flagged:
+                                flags += 1
+
+                            results.append({
+                                'table': table_name,
+                                'field': field_name,
+                                'strategy': strategy,
+                                'distribution_type': dist_type,
+                                'expected': {
+                                    'distribution': dist_type,
+                                    'mean': expected_mean,
+                                    'params': params
+                                },
+                                'actual': {
+                                    'mean': actual_mean,
+                                    'std': actual_std,
+                                    'min': actual_min,
+                                    'max': actual_max,
+                                    'null_count': null_count
+                                },
+                                'deviation': mean_deviation,
+                                'flagged': flagged
+                            })
                 
                 elif strategy == 'enum':
                     # Enum distribution check
                     values = field.get('values', [])
-                    weights = field.get('weights', {})
-                    
+                    weights = field.get('weights')
+
                     if not values:
                         continue
-                    
+
+                    # If weights is null/None, skip flagging entirely
+                    if weights is None:
+                        results.append({
+                            'table': table_name,
+                            'field': field_name,
+                            'strategy': strategy,
+                            'distribution_type': 'enum',
+                            'expected': {'values': values, 'weights': None},
+                            'actual': {},
+                            'deviation': None,
+                            'flagged': False,
+                            'note': 'weights not specified in spec'
+                        })
+                        continue
+
                     # Count actual values
                     value_counts = defaultdict(int)
                     for row in rows:
                         val = row.get(field_name)
                         if val:
                             value_counts[val] += 1
-                    
+
                     total = sum(value_counts.values())
                     if total == 0:
                         continue
-                    
+
                     # Compare against expected weights
                     flagged = False
                     for val in values:
                         expected_weight = weights.get(val, 1.0 / len(values)) if isinstance(weights, dict) else 1.0 / len(values)
                         actual_weight = value_counts.get(val, 0) / total
-                        
+
                         if abs(actual_weight - expected_weight) > 0.15:
                             flagged = True
                             break
-                    
+
                     if flagged:
                         flags += 1
-                    
-                    # Issue 3 — Include ALL fields in results (not just flagged)
+
                     results.append({
                         'table': table_name,
                         'field': field_name,
@@ -627,29 +689,46 @@ class EvalAgent:
     def _stage_2_llm_judge(self) -> None:
         """Run LLM judge evaluation on sampled rows."""
         if not anthropic:
-            logger.warning("anthropic library not available, skipping LLM judge")
+            logger.error("anthropic library not available, skipping LLM judge")
+            self.report['stages']['llm_judge']['table_results'].append({
+                'error': 'anthropic library not installed',
+                'warning': 'LLM judge skipped entirely — install anthropic package'
+            })
             return
-        
+
         logger.info("Running LLM Judge")
-        
-        client = anthropic.Anthropic()
+
+        try:
+            client = anthropic.Anthropic()
+        except Exception as e:
+            logger.error(f"Failed to initialize Anthropic client: {e}", exc_info=True)
+            self.report['stages']['llm_judge']['table_results'].append({
+                'error': f'Anthropic client init failed: {e}',
+                'warning': 'LLM judge skipped — check ANTHROPIC_API_KEY'
+            })
+            return
+
         model = os.getenv('ANTHROPIC_MODEL', self.llm_judge_config.get('model', 'claude-sonnet-4-20250514'))
         sample_size = self.llm_judge_config.get('sample_size_per_table', 20)
-        
+
         table_results = []
         quality_scores = []
-        
+        tables_attempted = 0
+        tables_failed = 0
+
         for table_name, table in self.table_map.items():
             if table_name in self.skip_tables or table_name not in self.csv_data:
                 continue
-            
+
             rows = self.csv_data[table_name]
             if not rows:
                 continue
-            
+
+            tables_attempted += 1
+
             # Sample rows
             sample_rows = random.sample(rows, min(sample_size, len(rows)))
-            
+
             # Build prompt
             field_descriptions = []
             for field in table.get('fields', []):
@@ -660,7 +739,7 @@ class EvalAgent:
                     'strategy': field.get('strategy'),
                     'nullable': nullable
                 })
-            
+
             user_prompt = f"""
 Evaluate the quality of these {len(sample_rows)} sampled rows from table '{table_name}'.
 
@@ -678,44 +757,110 @@ Assess:
 
 Return JSON only.
 """
-            
+
             try:
+                logger.info(f"LLM Judge: calling API for table '{table_name}' ({len(sample_rows)} sample rows)")
                 response = client.messages.create(
                     model=model,
                     max_tokens=4000,
                     system=JUDGE_SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": user_prompt}]
                 )
-                
-                # Parse response
-                response_text = response.content[0].text
-                judge_result = json.loads(response_text)
+
+                # Parse response — strip markdown fences if present
+                response_text = response.content[0].text.strip()
+                if response_text.startswith('```'):
+                    # Remove ```json ... ``` wrapper
+                    lines = response_text.split('\n')
+                    if lines[0].startswith('```'):
+                        lines = lines[1:]
+                    if lines and lines[-1].strip() == '```':
+                        lines = lines[:-1]
+                    response_text = '\n'.join(lines)
+                logger.info(f"LLM Judge: raw response for {table_name} ({len(response_text)} chars)")
+
+                try:
+                    judge_result = json.loads(response_text)
+                except json.JSONDecodeError as parse_err:
+                    logger.error(f"LLM Judge: JSON parse failed for {table_name}: {parse_err}\nRaw response: {response_text[:500]}")
+                    tables_failed += 1
+                    table_results.append({
+                        'table': table_name,
+                        'error': f'JSON parse failed: {parse_err}',
+                        'raw_response_preview': response_text[:500],
+                        'quality_score': None
+                    })
+                    continue
+
                 judge_result['table'] = table_name
-                
                 table_results.append(judge_result)
-                
-                # Extract quality score safely
-                quality_score = judge_result.get('quality_score')
+
+                # Extract quality score — LLM may use different key names
+                quality_score = (
+                    judge_result.get('quality_score')
+                    or judge_result.get('overall_quality_score')
+                    or judge_result.get('overall_quality')
+                    or judge_result.get('overall_score')
+                )
                 if quality_score is not None:
                     try:
                         quality_scores.append(int(quality_score))
                     except (ValueError, TypeError):
                         logger.warning(f"Invalid quality_score for {table_name}: {quality_score}")
-                
+
                 logger.info(f"LLM Judge for {table_name}: quality_score={quality_score}")
-            
+
             except Exception as e:
-                logger.warning(f"LLM Judge failed for {table_name}: {e}")
-        
+                tables_failed += 1
+                logger.error(f"LLM Judge API call failed for {table_name}: {e}", exc_info=True)
+                table_results.append({
+                    'table': table_name,
+                    'error': str(e),
+                    'quality_score': None,
+                    'warning': f'LLM judge call failed for {table_name} — results incomplete'
+                })
+
+        # Warn if no tables were successfully judged
+        if tables_attempted > 0 and len(quality_scores) == 0:
+            logger.error(f"LLM Judge: all {tables_attempted} table calls failed — no quality scores produced")
+        elif tables_failed > 0:
+            logger.warning(f"LLM Judge: {tables_failed}/{tables_attempted} tables failed")
+
+        logger.info(f"LLM Judge: {tables_attempted} attempted, {len(quality_scores)} scored, {tables_failed} failed")
+
         # Compute average quality score
         avg_quality = statistics.mean(quality_scores) if quality_scores else 0.0
-        
+
         self.report['stages']['llm_judge']['table_results'] = table_results
         self.report['stages']['llm_judge']['average_quality_score'] = avg_quality
-        self.report['stages']['llm_judge']['llm_quality_warning'] = avg_quality < 6.0 if quality_scores else False
-        self.report['summary']['llm_quality_warning'] = avg_quality < 6.0 if quality_scores else False
-        
+        self.report['stages']['llm_judge']['tables_attempted'] = tables_attempted
+        self.report['stages']['llm_judge']['tables_failed'] = tables_failed
+        self.report['stages']['llm_judge']['llm_quality_warning'] = (
+            avg_quality < 6.0 if quality_scores else tables_attempted > 0
+        )
+        self.report['summary']['llm_quality_warning'] = (
+            avg_quality < 6.0 if quality_scores else tables_attempted > 0
+        )
+
         logger.info(f"LLM Judge complete: average quality score = {avg_quality:.1f}")
+
+    def _aggregate_summary_counts(self) -> None:
+        """Aggregate tables_evaluated and total_rows_evaluated across all stages."""
+        tables_seen = set()
+        total_rows = 0
+
+        # From referential integrity: any table that was checked
+        for table_name in self.table_map:
+            if table_name in self.skip_tables:
+                continue
+            if table_name in self.csv_data:
+                tables_seen.add(table_name)
+                total_rows += len(self.csv_data[table_name])
+
+        self.report['summary']['tables_evaluated'] = len(tables_seen)
+        self.report['summary']['total_rows_evaluated'] = total_rows
+
+        logger.info(f"Summary: {len(tables_seen)} tables evaluated, {total_rows} total rows")
 
     def _stage_3_pass_fail_signal(self) -> None:
         """Compute overall pass/fail signal from thresholds."""
@@ -731,8 +876,19 @@ Return JSON only.
     def _write_report(self) -> None:
         """Write evaluation report to JSON file."""
         report_path = self.output_dir / 'eval_report.json'
+
+        class NumpyEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if np and isinstance(obj, (np.bool_, np.integer)):
+                    return int(obj)
+                if np and isinstance(obj, np.floating):
+                    return float(obj)
+                if np and isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                return super().default(obj)
+
         with open(report_path, 'w', encoding='utf-8') as f:
-            json.dump(self.report, f, indent=2)
+            json.dump(self.report, f, indent=2, cls=NumpyEncoder)
         logger.info(f"Report written to {report_path}")
 
 
