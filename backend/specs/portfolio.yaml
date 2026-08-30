@@ -1,0 +1,7 @@
+# Top-level run config. Size, horizon, seed. Everything else is in the sibling
+# fields/, domains/ and invariants/ directories.
+name: skeleton
+accounts: 1000
+cycles: 24
+seed: 42
+out: data

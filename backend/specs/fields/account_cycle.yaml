@@ -1,0 +1,59 @@
+# Account-cycle-grain fields.
+#
+# Some are derived (computed, never sampled): credit_limit_in_force is carried
+# forward and changed only by events; utilization is balance / limit. The
+# dependency edges below also document the core feedback loop that ADR-003
+# breaks with lag. The DAG builder proves the loop is acyclic once unrolled.
+fields:
+  spend_factor:
+    grain: account_cycle
+    dtype: float64
+    # Placeholder economics: fraction of the in-force limit spent this cycle.
+    # Real billing arithmetic replaces this in Tier 1.
+    dist:
+      family: beta
+      a: 1.6
+      b: 8.0
+
+  payment_fraction:
+    grain: account_cycle
+    dtype: float64
+    # Placeholder: fraction of the post-spend balance paid this cycle.
+    dist:
+      family: beta
+      a: 2.5
+      b: 2.0
+
+  credit_limit_in_force:
+    grain: account_cycle
+    dtype: int64
+    unit: USD
+    # Derived: initialised from credit_limit_initial, changed only by the
+    # line-increase event. The lag-1 edge on refreshed_fico represents the CLI
+    # decision using last cycle's refreshed score. It closes the loop below.
+    depends_on:
+      - field: refreshed_fico
+        lag: 1
+        mechanism: logit
+
+  utilization:
+    grain: account_cycle
+    dtype: float64
+    # Derived: cycle_ending_balance / credit_limit_in_force, same cycle.
+    depends_on:
+      - field: credit_limit_in_force
+        lag: 0
+        mechanism: formula
+
+  refreshed_fico:
+    grain: account_cycle
+    dtype: int64
+    # Derived: origination score minus a penalty proportional to LAST cycle's
+    # utilisation. `strength` is the points lost per unit of utilisation, so the
+    # number lives here in YAML, not in the engine. This lag-1 edge is what
+    # makes the limit -> utilisation -> score -> limit loop legal.
+    depends_on:
+      - field: utilization
+        lag: 1
+        mechanism: shift
+        strength: 80

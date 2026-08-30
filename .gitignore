@@ -31,6 +31,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# Build info
+*.tsbuildinfo
+
 # IDE
 .vscode/
 .idea/

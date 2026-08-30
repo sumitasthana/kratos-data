@@ -1,0 +1,41 @@
+# The one real domain in the skeleton: proactive credit line increase.
+#
+# Eligibility and hazard are separate blocks on purpose. Eligibility is a hard
+# policy/regulatory gate (Reg Z 1026.51), deterministic and auditable. The
+# hazard is behaviour, and random. Collapsing them into one logistic is the
+# common mistake that makes the output impossible to audit.
+#
+# Thresholds are tuned for a short 24-cycle smoke run so events actually fire.
+# They are illustrative, not calibrated.
+events:
+  credit_line_increase:
+    grain: account
+    trigger: {type: periodic_eligibility, cadence: quarterly}
+
+    eligibility:                       # HARD gates
+      - "months_on_book >= 6"
+      - "max_dpd_last_12m == 0"
+      - "refreshed_fico >= 640"
+      - "utilization_last_3m_avg >= 0.30"
+      - "ability_to_pay_assessed == true"
+
+    hazard:                            # among eligible, who actually gets one
+      family: logistic
+      intercept: -1.6
+      coefficients:
+        refreshed_fico_scaled:   0.7
+        utilization_last_3m_avg: 1.2
+        tenure_years:            0.3
+
+    amount:
+      family: discrete_lump
+      multipliers: [1.25, 1.50, 2.00]
+      weights:     [0.45, 0.38, 0.17]
+      round_to: 500
+
+    effects:                           # DERIVED, never resampled
+      - "credit_limit_in_force = round(credit_limit_in_force * multiplier, 500)"
+
+    emits:
+      - line_increase
+      - change_in_terms_notice         # Reg Z 1026.9(c): 45-day advance notice

@@ -1,0 +1,20 @@
+# Hard invariants: the acceptance criteria. A violating account is rejected and
+# regenerated (max 3 attempts). If the rejection rate climbs above ~5%, the
+# distributions and the constraints contradict each other. Fix the spec, never
+# raise the threshold.
+invariants:
+  - id: balance_recurrence
+    grain: account_cycle
+    expr: "abs(bal[t] - (bal[t-1] + purchases - payments)) < 0.01"
+    severity: hard
+
+  - id: utilization_definition
+    grain: account_cycle
+    expr: "utilization == cycle_ending_balance / credit_limit_in_force"
+    severity: hard
+
+  - id: utilization_bound
+    grain: account_cycle
+    expr: "utilization <= 1.05"
+    severity: hard
+    note: "A balance may sit slightly over the limit; far over it is a bug."

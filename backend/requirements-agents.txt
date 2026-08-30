@@ -1,0 +1,11 @@
+# Agents-layer dependencies ONLY. The deterministic engine must not import these.
+# Keep this separate from requirements.txt so the engine stays numpy/scipy/pandas/
+# pyarrow/pydantic/pyyaml with no network or model access (Cardinal hard rule 1).
+openpyxl        # authoring: read/write the ontology workbook
+rdflib          # load/query the ontology (Turtle, SPARQL, JSON-LD)
+owlrl           # OWL 2 RL reasoner, pure Python (no JVM)
+pyshacl         # SHACL validation of the design graph
+langgraph          # agent orchestration (graph + human-in-the-loop interrupts)
+langchain-anthropic # Claude model binding (direct Anthropic API path)
+langchain-aws       # Claude on Amazon Bedrock (this project's auth: AWS_BEARER_TOKEN_BEDROCK)
+boto3               # AWS SDK used by the Bedrock binding

@@ -49,3 +49,9 @@ htmlcov/
 # Logs
 *.log
 logs/
+
+# Cardinal skeleton
+data/
+data_ablated/
+__pycache__/
+.pytest_cache/

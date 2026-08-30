@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cardinal billing ontology, in plain words</title>
+<style>
+* { box-sizing:border-box; }
+body { margin:0; padding:32px; background:#fff; color:#17212f; font-family:Arial, Helvetica, sans-serif; line-height:1.5; }
+main { max-width:1200px; margin:auto; }
+h1 { margin:0 0 4px; font-size:28px; } h2 { font-size:18px; margin:28px 0 12px; }
+.sub { color:#536174; font-size:15px; margin:0 0 4px; }
+.stamp { color:#8794a5; font-size:12px; margin:0 0 24px; }
+.cards { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:8px; }
+.card { flex:1 1 320px; border:1px solid #d9e1ea; border-radius:10px; padding:16px 18px; }
+.card h3 { margin:0 0 6px; font-size:15px; } .card p { margin:0; font-size:14px; color:#3a4757; }
+.card.brain { background:#f6f1fb; border-color:#d6c2ea; } .card.recipe { background:#eef7ec; border-color:#bcdcb6; }
+.canvas { overflow:hidden; border:1px solid #d9e1ea; border-radius:8px; margin-top:4px; }
+svg { display:block; width:100%; height:auto; background:#fff; }
+.legend { display:flex; gap:20px; flex-wrap:wrap; font-size:13px; color:#3a4757; margin:10px 2px 0; }
+.legend span { display:inline-flex; align-items:center; gap:7px; }
+.sw { width:22px; height:14px; border-radius:3px; display:inline-block; border:1.5px solid; }
+.sw.in { background:#f3f5f7; border-color:#b6c0ca; } .sw.calc { background:#d8eafa; border-color:#82add6; }
+.sw.law { background:#fdeccd; border-color:#e0a94a; }
+.lline { width:26px; height:0; border-top:2px solid; display:inline-block; }
+.story { background:#fffaf0; border:1px solid #e7cf9c; border-radius:10px; padding:16px 20px; }
+.story ol { margin:8px 0 0; padding-left:20px; } .story li { margin:6px 0; font-size:14px; }
+table.gloss { border-collapse:collapse; width:100%; font-size:14px; }
+table.gloss td { border-top:1px solid #e6ebf0; padding:8px 10px; vertical-align:top; }
+table.gloss td.term { width:200px; font-weight:bold; color:#2a3647; }
+@media (max-width:700px) {
+  body { padding:18px; }
+  h1 { font-size:23px; }
+}
+</style></head><body><main>
+<h1>How credit card billing works, as a map</h1>
+<p class="sub">This is the "brain" the app already knows. Each box is one thing on a statement. Each arrow means "this is worked out from that."</p>
+<p class="stamp">Generated from billing_ontology.xlsx by build_ontology.py. 15 fields, 21 dependencies. Do not edit this page by hand.</p>
+<div class="cards">
+  <div class="card brain"><h3>The brain (this map)</h3><p>What the app knows about credit cards and the law, before you say anything. You do not write this. It guides the questions the app asks you.</p></div>
+  <div class="card recipe"><h3>Your recipe (comes later)</h3><p>The choices you make in the conversation. The app writes them into a file that tells the generator how to build your data.</p></div>
+</div>
+<h2>The map</h2>
+<div class="legend">
+  <span><span class="sw in"></span> You enter this</span>
+  <span><span class="sw calc"></span> The app works this out</span>
+  <span><span class="sw law"></span> The law requires this</span>
+  <span><span class="lline" style="border-color:#3a4757"></span> worked out from</span>
+  <span><span class="lline" style="border-color:#7a56b0"></span> uses last month</span>
+  <span><span class="lline" style="border-color:#c98a17;border-top-style:dashed"></span> a switch (on/off)</span>
+</div>
+<div class="canvas">
+<svg viewBox="0 0 1170 650" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Auto-generated map of billing fields and dependencies">
+<defs>
+<marker id="head" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L0 6 L8 3 Z" fill="#3a4757"/></marker>
+<marker id="lagHead" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L0 6 L8 3 Z" fill="#7a56b0"/></marker>
+<marker id="gateHead" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L0 6 L8 3 Z" fill="#c98a17"/></marker>
+</defs>
+
+<!-- dependency arrows -->
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <!-- cash advance, payments, and purchases produce average daily balance -->
+  <path d="M200 128 H215 V226 H245" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M200 348 H220 V238 H245" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M200 458 H225 V250 H245" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+
+  <!-- payment and previous statement determine paid-in-full status -->
+  <path d="M25 348 H10 V238 H25" stroke="#7a56b0" stroke-width="1.8" marker-end="url(#lagHead)"/>
+  <path d="M1050 320 V20 H220 V238 H200" stroke="#7a56b0" stroke-width="1.8" marker-end="url(#lagHead)"/>
+
+  <!-- paid-in-full status switches grace on -->
+  <path d="M200 238 H220 V348 H245" stroke="#c98a17" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#gateHead)"/>
+
+  <!-- APR, average daily balance, and grace determine interest -->
+  <path d="M420 128 H435 V446 H465" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M420 238 H440 V458 H465" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M420 348 H445 V470 H465" stroke="#c98a17" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#gateHead)"/>
+
+  <!-- previous statement becomes the next beginning balance -->
+  <path d="M1000 320 V55 H553 V100" stroke="#7a56b0" stroke-width="1.8" marker-end="url(#lagHead)"/>
+
+  <!-- all account flows reconcile into cycle ending balance -->
+  <path d="M200 128 H230 V180 H700 V324 H730" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M200 348 H215 V625 H820 V376" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M200 458 H225 V605 H800 V376" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M640 238 H655 V336 H730" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M640 348 H730" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M640 458 H680 V364 H730" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M640 128 H670 V328 H730" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+
+  <!-- ending balance produces the statement, which produces minimum payment -->
+  <path d="M910 348 H960" stroke="#3a4757" stroke-width="1.8" marker-end="url(#head)"/>
+  <path d="M1050 376 V470" stroke="#3a4757" stroke-width="1.8" marker-end="url(#head)"/>
+
+  <!-- fees and interest also feed minimum payment -->
+  <path d="M640 348 H655 V565 H1015 V526" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+  <path d="M640 458 H670 V590 H1085 V526" stroke="#3a4757" stroke-width="1.7" marker-end="url(#head)"/>
+</g>
+
+<!-- lag labels -->
+<g font-size="10.5" font-weight="bold" fill="#7a56b0" text-anchor="middle">
+  <rect x="77" y="274" width="71" height="17" rx="4" fill="#fff"/>
+  <text x="112.5" y="286">waits 1 mo</text>
+  <rect x="580" y="11" width="70" height="17" rx="4" fill="#fff"/>
+  <text x="615" y="23">waits 1 mo</text>
+  <rect x="720" y="46" width="70" height="17" rx="4" fill="#fff"/>
+  <text x="755" y="58">waits 1 mo</text>
+</g>
+
+<!-- field nodes -->
+<g>
+  <rect x="25" y="100" width="175" height="56" rx="9" fill="#f3f5f7" stroke="#b6c0ca" stroke-width="1.5"/>
+  <text x="112.5" y="124" font-size="13" font-weight="bold" text-anchor="middle">Cash advance volume</text>
+  <text x="112.5" y="141" font-size="10.5" fill="#51617a" text-anchor="middle">you enter</text>
+
+  <rect x="25" y="210" width="175" height="56" rx="9" fill="#fdeccd" stroke="#e0a94a" stroke-width="1.5"/>
+  <text x="112.5" y="234" font-size="13" font-weight="bold" text-anchor="middle">Paid in full last cycle</text>
+  <text x="112.5" y="251" font-size="10.5" fill="#51617a" text-anchor="middle">calculated</text>
+
+  <rect x="25" y="320" width="175" height="56" rx="9" fill="#f3f5f7" stroke="#b6c0ca" stroke-width="1.5"/>
+  <text x="112.5" y="344" font-size="13" font-weight="bold" text-anchor="middle">Payment amount</text>
+  <text x="112.5" y="361" font-size="10.5" fill="#51617a" text-anchor="middle">you enter</text>
+
+  <rect x="25" y="430" width="175" height="56" rx="9" fill="#f3f5f7" stroke="#b6c0ca" stroke-width="1.5"/>
+  <text x="112.5" y="454" font-size="13" font-weight="bold" text-anchor="middle">Purchase volume</text>
+  <text x="112.5" y="471" font-size="10.5" fill="#51617a" text-anchor="middle">you enter</text>
+
+  <rect x="25" y="540" width="175" height="56" rx="9" fill="#f3f5f7" stroke="#b6c0ca" stroke-width="1.5"/>
+  <text x="112.5" y="564" font-size="13" font-weight="bold" text-anchor="middle">Carries a balance (revolves)</text>
+  <text x="112.5" y="581" font-size="10.5" fill="#51617a" text-anchor="middle">you enter</text>
+
+  <rect x="245" y="100" width="175" height="56" rx="9" fill="#f3f5f7" stroke="#b6c0ca" stroke-width="1.5"/>
+  <text x="332.5" y="124" font-size="13" font-weight="bold" text-anchor="middle">APR in force</text>
+  <text x="332.5" y="141" font-size="10.5" fill="#51617a" text-anchor="middle">you enter</text>
+
+  <rect x="245" y="210" width="175" height="56" rx="9" fill="#d8eafa" stroke="#82add6" stroke-width="1.5"/>
+  <text x="332.5" y="234" font-size="13" font-weight="bold" text-anchor="middle">Average daily balance</text>
+  <text x="332.5" y="251" font-size="10.5" fill="#51617a" text-anchor="middle">calculated</text>
+
+  <rect x="245" y="320" width="175" height="56" rx="9" fill="#fdeccd" stroke="#e0a94a" stroke-width="1.5"/>
+  <text x="332.5" y="344" font-size="13" font-weight="bold" text-anchor="middle">Grace eligible</text>
+  <text x="332.5" y="361" font-size="10.5" fill="#51617a" text-anchor="middle">calculated</text>
+
+  <rect x="465" y="100" width="175" height="56" rx="9" fill="#d8eafa" stroke="#82add6" stroke-width="1.5"/>
+  <text x="552.5" y="124" font-size="13" font-weight="bold" text-anchor="middle">Beginning balance</text>
+  <text x="552.5" y="141" font-size="10.5" fill="#51617a" text-anchor="middle">calculated</text>
+
+  <rect x="465" y="210" width="175" height="56" rx="9" fill="#f3f5f7" stroke="#b6c0ca" stroke-width="1.5"/>
+  <text x="552.5" y="234" font-size="13" font-weight="bold" text-anchor="middle">Credits and refunds</text>
+  <text x="552.5" y="251" font-size="10.5" fill="#51617a" text-anchor="middle">you enter</text>
+
+  <rect x="465" y="320" width="175" height="56" rx="9" fill="#f3f5f7" stroke="#b6c0ca" stroke-width="1.5"/>
+  <text x="552.5" y="344" font-size="13" font-weight="bold" text-anchor="middle">Fees billed</text>
+  <text x="552.5" y="361" font-size="10.5" fill="#51617a" text-anchor="middle">you enter</text>
+
+  <rect x="465" y="430" width="175" height="56" rx="9" fill="#fdeccd" stroke="#e0a94a" stroke-width="1.5"/>
+  <text x="552.5" y="454" font-size="13" font-weight="bold" text-anchor="middle">Interest charged</text>
+  <text x="552.5" y="471" font-size="10.5" fill="#51617a" text-anchor="middle">calculated</text>
+
+  <rect x="730" y="320" width="180" height="56" rx="9" fill="#d8eafa" stroke="#82add6" stroke-width="1.5"/>
+  <text x="820" y="344" font-size="13" font-weight="bold" text-anchor="middle">Cycle ending balance</text>
+  <text x="820" y="361" font-size="10.5" fill="#51617a" text-anchor="middle">calculated</text>
+
+  <rect x="960" y="320" width="180" height="56" rx="9" fill="#d8eafa" stroke="#82add6" stroke-width="1.5"/>
+  <text x="1050" y="344" font-size="13" font-weight="bold" text-anchor="middle">Statement balance</text>
+  <text x="1050" y="361" font-size="10.5" fill="#51617a" text-anchor="middle">calculated</text>
+
+  <rect x="960" y="470" width="180" height="56" rx="9" fill="#d8eafa" stroke="#82add6" stroke-width="1.5"/>
+  <text x="1050" y="494" font-size="13" font-weight="bold" text-anchor="middle">Minimum payment due</text>
+  <text x="1050" y="511" font-size="10.5" fill="#51617a" text-anchor="middle">calculated</text>
+</g>
+</svg>
+</div>
+<h2>The one story worth understanding: the grace period</h2>
+<div class="story">
+<p style="margin:0;font-size:14px;">Follow the amber boxes. This is the rule the law forces in, and the one most people model wrong.</p>
+<ol>
+<li><b>Did they pay last month's bill in full?</b> The app looks back one month (the purple arrows) and answers yes or no.</li>
+<li><b>If yes, the grace period is on.</b> Grace is a no-interest window: new spending is not charged interest.</li>
+<li><b>So interest gets switched off.</b> That is the dashed amber arrow. During grace, interest for the month is zero.</li>
+<li><b>If no, interest is charged</b> as the average balance times the monthly rate.</li>
+</ol>
+</div>
+<h2>The words, in plain terms</h2>
+<table class="gloss">
+<tr><td class="term">Ontology (the brain)</td><td>A stored map of how credit card billing works and what the law requires.</td></tr>
+<tr><td class="term">Node (box)</td><td>One thing on a statement: a number, or a yes/no.</td></tr>
+<tr><td class="term">Edge (arrow)</td><td>"This is worked out from that." The arrow points from what is used to what it produces.</td></tr>
+<tr><td class="term">Entered vs worked out</td><td>Gray boxes are values we make up to feed the model. Blue and amber boxes are calculated by a fixed formula.</td></tr>
+<tr><td class="term">Lag ("uses last month")</td><td>Some things depend on last month, not this month. Shown as purple arrows.</td></tr>
+<tr><td class="term">Gate (a switch)</td><td>One thing switches another on or off. Grace switches interest off. Shown dashed.</td></tr>
+<tr><td class="term">Obligation</td><td>A rule the law forces you to include. The app asks about it first.</td></tr>
+<tr><td class="term">Invariant</td><td>A check the finished data must always pass. If it breaks, the account is remade.</td></tr>
+</table>
+</main></body></html>

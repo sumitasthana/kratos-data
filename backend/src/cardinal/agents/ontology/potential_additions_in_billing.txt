@@ -1,0 +1,357 @@
+Potential additions to the Cardinal billing ontology
+
+Purpose
+=======
+
+These additions would make the billing ontology complete enough to support a
+credible credit-card billing simulation. The current workbook is structurally
+sound as a first draft, but several formulas refer to facts that have not yet
+been defined.
+
+
+1. Billing dates and cycle timing
+=================================
+
+Add fields for:
+
+- Cycle start date
+- Cycle end date
+- Statement date
+- Payment due date
+- Transaction date
+- Posting date
+- Payment received date
+- Number of days in the billing cycle
+
+Why this is needed:
+
+Purchases and payments affect interest differently depending on when they occur.
+The model cannot calculate a true daily balance or determine whether a payment
+was made on time using monthly totals alone.
+
+The ontology should also define exactly what cycle index t means. For example,
+a payment received during cycle t may be paying the statement produced at the
+end of cycle t-1.
+
+
+2. Missing balance components
+=============================
+
+Add fields for:
+
+- Previous cycle ending balance
+- Beginning balance
+- Cash advances
+- Fees
+- Credits
+- Refunds
+- Adjustments
+- Charge-offs
+- Reversed transactions
+
+Why this is needed:
+
+The current ending-balance formula already mentions several of these values,
+but they are not defined as fields. Every value used by a formula should exist
+in the Fields sheet and have a corresponding dependency row.
+
+A basic recurrence should be explicitly defined as:
+
+  ending balance
+  = beginning balance
+  + purchases
+  + cash advances
+  + fees
+  + interest
+  - payments
+  - credits
+  - charge-offs
+  +/- adjustments
+
+
+3. Daily balance calculation
+============================
+
+Add a daily account-balance concept or a daily ledger projection.
+
+It should explain how each day's balance is produced from:
+
+- Beginning balance
+- Purchases posted that day
+- Cash advances posted that day
+- Payments received or posted that day
+- Credits and refunds posted that day
+- Fees and adjustments posted that day
+
+Why this is needed:
+
+Average daily balance requires a sequence of daily balances. It cannot be
+calculated accurately from total monthly purchases and payments unless the
+ontology declares a simplifying timing assumption.
+
+
+4. Separate balance types
+=========================
+
+Add balance categories for:
+
+- Purchase balance
+- Cash-advance balance
+- Balance-transfer balance
+- Promotional balance
+- Fee balance, if modeled separately
+- Interest balance, if modeled separately
+
+Why this is needed:
+
+Different balance types can have different APRs, grace-period treatment,
+promotional periods, and payment-allocation rules. One account-level APR and
+one combined balance cannot represent those differences.
+
+
+5. Interest configuration
+=========================
+
+Add fields or policy settings for:
+
+- Interest calculation method
+- Daily periodic rate
+- Monthly periodic rate
+- APR effective start and end dates
+- Purchase APR
+- Cash-advance APR
+- Balance-transfer APR
+- Promotional APR
+- Penalty APR
+- Minimum-interest charge
+- Interest rounding method
+- Compounding or capitalization rule
+- Number of days used to convert APR to a daily rate
+
+Why this is needed:
+
+The current formula assumes average_daily_balance * APR / 12. That works only
+when the product uses a monthly periodic rate. If it uses a daily periodic rate,
+the calculation generally also needs the number of days in the cycle.
+
+
+6. Complete grace-period logic
+==============================
+
+Add fields and rules for:
+
+- Whether the product offers a grace period
+- Which balance types are eligible
+- Grace-period length
+- Balance that must be paid to preserve grace
+- Deadline by which that payment must be received
+- Whether grace was available at the start of the cycle
+- Whether grace was lost during the cycle
+- Whether grace can be restored, and under what conditions
+
+Why this is needed:
+
+Grace eligibility is more than a single paid-in-full flag. It depends on product
+terms, balance type, payment timing, and the balance that the customer was
+required to pay.
+
+The meaning of paid_in_full_last_cycle should be made precise. It should state
+which statement balance is being tested and which payments, through which due
+date, count toward the test.
+
+
+7. Minimum-payment and payment behavior
+=======================================
+
+Add policy fields for:
+
+- Minimum-payment percentage
+- Minimum-payment floor amount
+- Treatment of billed fees
+- Treatment of billed interest
+- Past-due amount
+- Amount over the credit limit
+- Fixed-plan or promotional installment amount
+- Rule that caps the minimum payment at the statement balance
+
+Add account-cycle fields for:
+
+- Minimum payment due
+- Amount paid by the due date
+- Payment status: full, minimum, partial, missed, or overpayment
+- Late payment indicator
+- Returned payment amount
+- Past-due amount
+- Days past due
+
+Why this is needed:
+
+The minimum-payment formula is an issuer policy, so its parameters must be
+explicit. Payment generation should also depend on the statement balance,
+minimum payment, due date, and customer payment behavior rather than being an
+unconnected random draw.
+
+
+8. Payment allocation
+=====================
+
+Add rules describing how a payment is divided among:
+
+- Purchase balances
+- Cash-advance balances
+- Balance-transfer balances
+- Promotional balances
+- Fees and interest
+- Amounts with different APRs
+
+Why this is needed:
+
+Payment allocation changes the balances that remain and therefore changes
+future interest. Without it, a multi-rate account will not reconcile correctly.
+
+
+9. Missing dependency edges
+============================
+
+Add dependency rows connecting:
+
+- Previous ending balance to current beginning balance
+- Beginning balance to daily balance
+- Dated transactions and payments to daily balance
+- Daily balance to average daily balance
+- Applicable APR, periodic rate, cycle days, and grace state to interest
+- Interest to cycle ending balance
+- Cash advances to cycle ending balance
+- Fees to cycle ending balance
+- Credits and refunds to cycle ending balance
+- Charge-offs and adjustments to cycle ending balance
+- Statement balance, fees, interest, past-due amount, policy percentage, and
+  policy floor to minimum payment due
+- Statement balance, minimum payment, customer behavior, and due date to payment
+- Payment allocation to the ending balance of each balance type
+
+Every variable used in a formula should have an explicit dependency edge.
+
+
+10. Additional invariants
+=========================
+
+Add hard validation rules for:
+
+- Ending balance reconciles to beginning balance and all posted flows
+- Statement balance reconciles to the ledger as of the statement date
+- Sum of balance-type balances equals the total balance
+- Average daily balance reconciles to daily balances
+- Interest charged is not negative
+- Payments, purchases, fees, and credits follow their declared bounds
+- Grace-eligible purchase balances do not receive prohibited interest
+- Minimum payment is not negative
+- Minimum payment does not exceed statement balance or the amount legally due
+- Amount paid by the due date is calculated only from eligible payments
+- Payment allocations sum to the total payment
+- Closed or charged-off accounts do not receive unsupported new activity
+
+Add soft checks for unusual but possible results, such as exceptionally large
+payments, unusually high utilization, or repeated returned payments.
+
+
+11. Initial conditions and exceptional events
+=============================================
+
+Define behavior for:
+
+- The first billing cycle, where no previous statement exists
+- Newly opened accounts
+- Zero-balance accounts
+- Credit balances
+- Closed accounts
+- Suspended accounts
+- Delinquent accounts
+- Charged-off accounts
+- Refunds and disputes
+- Reversed purchases and payments
+- Returned payments
+- Late fees
+- Over-limit amounts
+- Account hardship or payment plans
+
+Why this is needed:
+
+Formulas that use t-1 require a defined starting state. Exceptional events also
+need explicit treatment so they do not accidentally break reconciliation.
+
+
+12. Precise definitions and naming
+==================================
+
+Define these terms unambiguously:
+
+- payment[t]
+- statement_balance[t]
+- previous balance
+- beginning balance
+- cycle ending balance
+- statement balance
+- revolves
+- paid in full
+- grace eligible
+- payment received date
+- payment posting date
+- transaction date
+- posting date
+
+Use field IDs consistently inside formulas and invariant expressions. For
+example, formulas should not mix bal, interest, and f_interest_charged unless a
+documented expression language maps those names.
+
+
+13. Source and regulatory precision
+====================================
+
+For every regulatory item:
+
+- Cite the exact subsection instead of a broad section when possible
+- Separate legal requirements from issuer policy
+- Separate statement-disclosure requirements from calculation rules
+- Remove or source quantitative claims such as estimated revenue impact
+- Record the date or version of the regulatory source reviewed
+- Have a qualified compliance specialist confirm the final interpretation
+
+For example, a minimum-payment formula is normally issuer policy, while rules
+about what must appear on a periodic statement are regulatory obligations.
+Those should be represented as separate ontology facts.
+
+
+14. Workbook and Turtle synchronization
+=======================================
+
+Update the workbook-to-Turtle process so billing.ttl contains every:
+
+- Grain
+- Field
+- Dependency, including lag and mechanism
+- Invariant
+- Obligation
+- Citation
+
+Add an automated comparison test that fails when the workbook and billing.ttl
+describe different IDs or dependency edges.
+
+Also declare every ontology property used by the Turtle file, including
+card:grainKey, and expand the SHACL checks to cover required fields, enum values,
+reference integrity, dependency cycles, and obligation references.
+
+
+Recommended implementation order
+================================
+
+1. Define dates, cycle timing, and t versus t-1 semantics.
+2. Add all missing balance components and dependency edges.
+3. Add daily balances and average-daily-balance calculation.
+4. Define interest methods, APR types, and grace-period behavior.
+5. Define minimum-payment policy, payment behavior, and allocation.
+6. Add balance categories and exceptional account states.
+7. Add the missing invariants.
+8. Correct and verify regulatory citations.
+9. Synchronize the workbook and Turtle ontology automatically.
+

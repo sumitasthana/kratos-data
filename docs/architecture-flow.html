@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cardinal data-generation flow</title>
+  <style>
+    :root { --ink:#17212f; --line:#243449; --blue:#d8eafa; --blue-stroke:#82add6; --mint:#def0dc; --mint-stroke:#7fb27b; --gray:#f3f5f7; --gray-stroke:#b6c0ca; }
+    * { box-sizing: border-box; }
+    body { margin:0; padding:24px; background:#fff; color:var(--ink); font-family:Arial, Helvetica, sans-serif; }
+    main { max-width:1320px; margin:auto; }
+    h1 { margin:0 0 6px; font-size:26px; }
+    p { margin:0 0 18px; color:#536174; font-size:14px; }
+    .canvas { border:1px solid #d9e1ea; border-radius:8px; overflow:hidden; }
+    svg { display:block; width:100%; height:auto; background:#fff; }
+    .box { fill:var(--blue); stroke:var(--blue-stroke); stroke-width:1.5; }
+    .input { fill:var(--gray); stroke:var(--gray-stroke); stroke-width:1.5; }
+    .output { fill:var(--mint); stroke:var(--mint-stroke); stroke-width:1.5; }
+    .agent { fill:#f4e8ff; stroke:#af83d5; stroke-width:1.5; }
+    .arrow, .loop, .agentLink { fill:none; stroke-linecap:round; stroke-linejoin:round; }
+    .arrow { stroke:var(--line); stroke-width:1.8; marker-end:url(#head); }
+    .loop { stroke:#60738a; stroke-width:1.5; stroke-dasharray:6 5; marker-end:url(#loopHead); }
+    .agentLink { stroke:#8159ad; stroke-width:1.5; stroke-dasharray:4 4; marker-end:url(#agentHead); }
+    .phase { font-size:11px; font-weight:bold; letter-spacing:1.25px; fill:#6382a5; }
+    .title { font-size:13px; font-weight:bold; text-anchor:middle; }
+    .copy { font-size:10.5px; text-anchor:middle; fill:#43546a; }
+    .edge { font-size:10.5px; font-weight:bold; fill:#304662; }
+    .tag { font:10px Consolas, monospace; text-anchor:middle; fill:#355b82; }
+    .foot { font-size:11px; fill:#536174; }
+    @media (max-width:760px) {
+      body { padding:12px; }
+      h1 { font-size:21px; }
+      .canvas { overflow-x:auto; }
+      svg { width:1050px; max-width:none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cardinal data-generation flow</h1>
+    <p>The main flow runs left to right. Dashed lines are retry loops when a check fails.</p>
+    <div class="canvas">
+      <svg viewBox="0 0 1320 555" role="img" aria-label="A process flow from YAML configuration to validated synthetic credit card data">
+        <defs>
+          <marker id="head" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L0 6 L8 3 Z" fill="#243449"/></marker>
+          <marker id="loopHead" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L0 6 L8 3 Z" fill="#60738a"/></marker>
+          <marker id="agentHead" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L0 6 L8 3 Z" fill="#8159ad"/></marker>
+        </defs>
+
+        <text x="25" y="32" class="phase">1. DESCRIBE THE SCENARIO</text>
+        <text x="250" y="32" class="phase">2. PREPARE THE MODEL</text>
+        <text x="505" y="32" class="phase">3. GENERATE ACCOUNT ACTIVITY</text>
+        <text x="1155" y="32" class="phase">4. CHECK AND SAVE</text>
+
+        <!-- optional agent -->
+        <rect x="25" y="50" width="140" height="82" rx="10" class="agent"/>
+        <text x="95" y="75" class="title">Optional AI agent</text>
+        <text x="95" y="96" class="copy">Helps draft and explain</text>
+        <text x="95" y="111" class="copy">YAML rules</text>
+        <text x="95" y="122" class="copy">It does not generate data rows</text>
+        <path d="M95 132 C95 145 95 150 95 164" class="agentLink"/>
+
+        <!-- YAML input -->
+        <rect x="25" y="170" width="140" height="120" rx="10" class="input"/>
+        <text x="95" y="196" class="title">YAML configuration</text>
+        <text x="95" y="220" class="copy">A simple text file that says</text>
+        <text x="95" y="236" class="copy">what data Cardinal should</text>
+        <text x="95" y="252" class="copy">create</text>
+        <text x="95" y="272" class="copy">Example: accounts, months, rules</text>
+
+        <!-- spec -->
+        <path d="M165 230 C171 230 177 230 183 230" class="arrow"/>
+        <rect x="185" y="170" width="140" height="120" rx="10" class="box"/>
+        <text x="255" y="197" class="title">Read the rules</text>
+        <text x="255" y="220" class="copy">Check the YAML has</text>
+        <text x="255" y="236" class="copy">everything needed and</text>
+        <text x="255" y="252" class="copy">the rules agree</text>
+        <text x="255" y="273" class="tag">spec/</text>
+
+        <!-- dag -->
+        <path d="M325 230 C331 230 337 230 343 230" class="arrow"/>
+        <rect x="345" y="170" width="140" height="120" rx="10" class="box"/>
+        <text x="415" y="194" class="title">Make a calculation</text>
+        <text x="415" y="210" class="title">plan</text>
+        <text x="415" y="233" class="copy">Set the order in which</text>
+        <text x="415" y="249" class="copy">values can safely be</text>
+        <text x="415" y="265" class="copy">calculated</text>
+        <text x="415" y="282" class="tag">dag/</text>
+
+        <!-- dist -->
+        <path d="M485 230 C491 230 497 230 503 230" class="arrow"/>
+        <rect x="505" y="170" width="145" height="120" rx="10" class="box"/>
+        <text x="577.5" y="197" class="title">Generate values</text>
+        <text x="577.5" y="220" class="copy">Draw amounts like spend</text>
+        <text x="577.5" y="236" class="copy">and income from patterns</text>
+        <text x="577.5" y="252" class="copy">called distributions</text>
+        <text x="577.5" y="273" class="tag">dist/</text>
+
+        <!-- copula -->
+        <path d="M650 230 C656 230 662 230 668 230" class="arrow"/>
+        <rect x="670" y="170" width="145" height="120" rx="10" class="box"/>
+        <text x="742.5" y="197" class="title">Add correlation</text>
+        <text x="742.5" y="220" class="copy">Link related values so they</text>
+        <text x="742.5" y="236" class="copy">move together realistically</text>
+        <text x="742.5" y="273" class="tag">copula/</text>
+
+        <!-- population -->
+        <path d="M815 230 C821 230 827 230 833 230" class="arrow"/>
+        <rect x="835" y="170" width="145" height="120" rx="10" class="box"/>
+        <text x="907.5" y="194" class="title">Build the population</text>
+        <text x="907.5" y="220" class="copy">Create applicants and</text>
+        <text x="907.5" y="236" class="copy">accounts, including declined</text>
+        <text x="907.5" y="252" class="copy">applications</text>
+        <text x="907.5" y="273" class="tag">engine/population.py</text>
+
+        <!-- simulate -->
+        <path d="M980 230 C986 230 992 230 998 230" class="arrow"/>
+        <rect x="1000" y="170" width="170" height="120" rx="10" class="box"/>
+        <text x="1085" y="194" class="title">Simulate account events</text>
+        <text x="1085" y="220" class="copy">Create connected purchases,</text>
+        <text x="1085" y="236" class="copy">payments, interest and</text>
+        <text x="1085" y="252" class="copy">credit-limit changes</text>
+        <text x="1085" y="273" class="tag">engine/ · domains/</text>
+
+        <!-- check -->
+        <path d="M1170 230 C1176 230 1182 230 1188 230" class="arrow"/>
+        <rect x="1190" y="170" width="100" height="120" rx="10" class="box"/>
+        <text x="1240" y="197" class="title">Check</text>
+        <text x="1240" y="224" class="copy">Valid?</text>
+        <text x="1240" y="273" class="tag">invariants/</text>
+
+        <!-- invalid YAML loop -->
+        <path d="M255 290 C255 338 95 338 95 292" class="loop"/>
+        <rect x="81" y="316" width="188" height="18" rx="4" fill="#fff"/>
+        <text x="175" y="327" class="edge" text-anchor="middle">If YAML is invalid: fix it and retry</text>
+
+        <!-- regenerate loop -->
+        <path d="M1240 290 C1240 343 1085 343 1085 292" class="loop"/>
+        <rect x="1080" y="317" width="165" height="18" rx="4" fill="#fff"/>
+        <text x="1162" y="328" class="edge" text-anchor="middle">No: regenerate this account</text>
+
+        <!-- yes -> emit -->
+        <path d="M1290 230 C1302 230 1302 372 1275 390 C1252 405 1215 405 1192 405" class="arrow"/>
+        <text x="1300" y="315" class="edge">Yes</text>
+        <rect x="1000" y="365" width="190" height="105" rx="10" class="output"/>
+        <text x="1095" y="395" class="title">Export data files</text>
+        <text x="1095" y="418" class="copy">Turn valid events into tables</text>
+        <text x="1095" y="435" class="copy">and save CSV, Parquet, or RDF</text>
+        <text x="1095" y="455" class="tag">emit/</text>
+
+        <!-- explanation -->
+        <rect x="25" y="365" width="815" height="105" rx="10" class="input"/>
+        <text x="432.5" y="397" class="title">What the output means</text>
+        <text x="432.5" y="423" class="copy">Each row in the final data comes from a simulated account event, rather than being invented as an isolated value.</text>
+        <text x="432.5" y="442" class="copy">Using the same YAML file and random seed gives the same result again.</text>
+
+        <path d="M1000 417 C950 417 910 417 842 417" class="arrow"/>
+        <text x="920" y="402" class="edge" text-anchor="middle">final synthetic credit-card data</text>
+
+        <text x="25" y="515" class="foot">Key idea: developers change the YAML configuration to describe a new scenario. The deterministic code performs the actual data generation.</text>
+      </svg>
+    </div>
+  </main>
+</body>
+</html>

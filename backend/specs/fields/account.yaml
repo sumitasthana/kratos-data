@@ -1,0 +1,39 @@
+# Account-grain fields, sampled once at origination.
+#
+# Every distribution parameter here is a placeholder. In the real system each
+# would carry a `calibration:` key pointing at a published reference. They do
+# not yet, which is why the manifest marks the run speculative.
+fields:
+  fico_at_origination:
+    grain: account
+    dtype: int64
+    dist:
+      family: truncated_normal
+      mu: 710
+      sigma: 60
+      lo: 560
+      hi: 850
+
+  utilization_propensity:
+    grain: account
+    dtype: float64
+    # A latent trait: how much of the line this account tends to carry.
+    dist:
+      family: beta
+      a: 2.2
+      b: 3.0
+
+  credit_limit_initial:
+    grain: account
+    dtype: int64
+    unit: USD
+    dist:
+      family: categorical
+      values:  [500, 1000, 2500, 5000, 10000, 20000]
+      weights: [0.08, 0.17, 0.24, 0.28, 0.16, 0.07]
+    depends_on:
+      - field: fico_at_origination
+        lag: 0
+        mechanism: weight_tilt
+        strength: 1.4
+    bounds: {min: 300, max: 100000}

@@ -1,0 +1,120 @@
+# Cardinal ontology - core vocabulary (stable, hand-authored)
+#
+# This file declares the vocabulary every domain file uses: the classes, the
+# properties, the fixed lists (priorities, mechanisms, distribution families),
+# and the generic design-coherence SHACL shapes. Domain files (billing.ttl, ...)
+# are GENERATED from the Excel workbook and import this file. Do not put
+# domain facts here.
+
+@prefix card: <https://cardinal.dev/onto#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+
+<https://cardinal.dev/onto> a owl:Ontology ;
+    dct:title "Cardinal ontology core vocabulary"@en .
+
+################################################################################
+# Classes
+################################################################################
+
+card:Grain a owl:Class ; skos:prefLabel "Grain"@en ;
+    skos:definition "The row-identity level a field lives at."@en .
+card:Field a owl:Class ; skos:prefLabel "Field"@en .
+card:DerivedField a owl:Class ; rdfs:subClassOf card:Field ;
+    skos:definition "A field computed from others, never sampled."@en .
+card:Dependency a owl:Class ; skos:prefLabel "Dependency"@en .
+card:Invariant a owl:Class ; skos:prefLabel "Data invariant"@en ;
+    skos:definition "A rule that must hold on generated data."@en .
+card:Obligation a owl:Class ; skos:prefLabel "Obligation"@en .
+card:RegulatoryObligation a owl:Class ; rdfs:subClassOf card:Obligation .
+card:Priority a owl:Class .
+card:Mechanism a owl:Class .
+card:DistributionFamily a owl:Class .
+
+################################################################################
+# Properties
+################################################################################
+
+card:ask  a owl:AnnotationProperty ; rdfs:comment "How to phrase this to the user."@en .
+card:why  a owl:AnnotationProperty ; rdfs:comment "Rationale shown as a chip."@en .
+
+card:grainKey  a owl:DatatypeProperty ; rdfs:domain card:Grain ; rdfs:range xsd:string .
+card:onGrain   a owl:ObjectProperty ; rdfs:domain card:Field ; rdfs:range card:Grain .
+card:dtype     a owl:DatatypeProperty ; rdfs:domain card:Field ; rdfs:range xsd:string .
+card:derived   a owl:DatatypeProperty ; rdfs:domain card:Field ; rdfs:range xsd:boolean .
+card:formula   a owl:DatatypeProperty ; rdfs:domain card:Field ; rdfs:range xsd:string .
+card:gate      a owl:DatatypeProperty ; rdfs:domain card:Field ; rdfs:range xsd:string .
+card:distFamily a owl:ObjectProperty ; rdfs:domain card:Field ; rdfs:range card:DistributionFamily .
+card:priority  a owl:ObjectProperty ; rdfs:range card:Priority .
+
+card:source    a owl:ObjectProperty ; rdfs:domain card:Dependency ; rdfs:range card:Field .
+card:target    a owl:ObjectProperty ; rdfs:domain card:Dependency ; rdfs:range card:Field .
+card:lag       a owl:DatatypeProperty ; rdfs:domain card:Dependency ; rdfs:range xsd:integer .
+card:mechanism a owl:ObjectProperty ; rdfs:domain card:Dependency ; rdfs:range card:Mechanism .
+
+card:expr          a owl:DatatypeProperty ; rdfs:domain card:Invariant ; rdfs:range xsd:string .
+card:severity      a owl:DatatypeProperty ; rdfs:domain card:Invariant ; rdfs:range xsd:string .
+card:appliesToGrain a owl:ObjectProperty ; rdfs:range card:Grain ;
+    rdfs:comment "The grain an invariant is checked at."@en .
+
+card:triggeredByField  a owl:ObjectProperty ; rdfs:domain card:Obligation ; rdfs:range card:Field .
+card:requiresField     a owl:ObjectProperty ; rdfs:domain card:Obligation ; rdfs:range card:Field .
+card:requiresInvariant a owl:ObjectProperty ; rdfs:domain card:Obligation ; rdfs:range card:Invariant .
+card:rank a owl:DatatypeProperty ; rdfs:domain card:Priority ; rdfs:range xsd:integer .
+
+# dependency reachability - this is where the OWL 2 RL reasoner does real work
+card:transitivelyDependsOn a owl:ObjectProperty , owl:TransitiveProperty ;
+    rdfs:domain card:Field ; rdfs:range card:Field ;
+    rdfs:comment "Transitive closure of directlyDependsOn, for cycle/lag checks."@en .
+card:directlyDependsOn a owl:ObjectProperty ;
+    rdfs:subPropertyOf card:transitivelyDependsOn ;
+    rdfs:domain card:Field ; rdfs:range card:Field .
+card:influences a owl:ObjectProperty ; owl:inverseOf card:directlyDependsOn .
+
+# A-Box vocabulary: the user's in-progress design is a set of chosen fields
+card:Design a owl:Class ; skos:prefLabel "Design"@en ;
+    skos:definition "A user's in-progress choice of fields to generate (the A-Box)."@en .
+card:includesField a owl:ObjectProperty ; rdfs:domain card:Design ; rdfs:range card:Field .
+
+################################################################################
+# Enumerations
+################################################################################
+
+card:Regulatory a card:Priority ; skos:prefLabel "Regulatory"@en ; card:rank 1 .
+card:Structural a card:Priority ; skos:prefLabel "Structural"@en ; card:rank 2 .
+card:Refinement a card:Priority ; skos:prefLabel "Refinement"@en ; card:rank 3 .
+
+card:Formula a card:Mechanism . card:Gate a card:Mechanism .
+card:WeightTilt a card:Mechanism . card:Scale a card:Mechanism .
+card:Shift a card:Mechanism . card:Logit a card:Mechanism .
+
+card:Categorical a card:DistributionFamily . card:Lognormal a card:DistributionFamily .
+card:ZeroInflatedLognormal a card:DistributionFamily . card:NegativeBinomial a card:DistributionFamily .
+card:Beta a card:DistributionFamily . card:TruncatedNormal a card:DistributionFamily .
+card:DiscreteLump a card:DistributionFamily . card:EmpiricalCDF a card:DistributionFamily .
+card:Mixture a card:DistributionFamily . card:Constant a card:DistributionFamily .
+
+################################################################################
+# Generic design-coherence SHACL shapes (validate the design graph, live)
+# NOTE: inline PREFIX for readability; wire sh:prefixes when we run pyshacl.
+################################################################################
+
+card:sh_derived_has_formula a sh:NodeShape ;
+    sh:targetClass card:DerivedField ;
+    sh:sparql [
+        sh:message "A derived field must declare a formula." ;
+        sh:select """
+            PREFIX card: <https://cardinal.dev/onto#>
+            SELECT $this WHERE { FILTER NOT EXISTS { $this card:formula ?f } }""" ] .
+
+card:sh_dependency_wellformed a sh:NodeShape ;
+    sh:targetClass card:Dependency ;
+    sh:property [ sh:path card:source ; sh:minCount 1 ; sh:message "Dependency needs a source field." ] ,
+                [ sh:path card:target ; sh:minCount 1 ; sh:message "Dependency needs a target field." ] ,
+                [ sh:path card:lag ; sh:minCount 1 ; sh:datatype xsd:integer ; sh:message "Dependency must declare a lag." ] ,
+                [ sh:path card:mechanism ; sh:minCount 1 ; sh:message "Dependency must declare a mechanism." ] .

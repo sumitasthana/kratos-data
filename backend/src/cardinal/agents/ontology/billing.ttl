@@ -1,0 +1,329 @@
+# GENERATED FILE - do not edit by hand.
+# Source of truth: billing_ontology.xlsx. Regenerate with build_ontology.py.
+
+@prefix card: <https://cardinal.dev/onto#> .
+@prefix bill: <https://cardinal.dev/onto/billing#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+
+<https://cardinal.dev/onto/billing> a owl:Ontology ;
+    owl:imports <https://cardinal.dev/onto> ;
+    dct:title "Cardinal billing ontology (generated)"@en .
+
+# ---- Grains ----
+bill:Account a card:Grain ; skos:prefLabel "Account"@en ; card:grainKey "account_id" .
+bill:AccountCycle a card:Grain ; skos:prefLabel "Account cycle"@en ; card:grainKey "account_id, cycle_seq" .
+
+# ---- Fields ----
+bill:f_apr a card:Field ;
+    skos:prefLabel "APR in force"@en ;
+    card:onGrain bill:Account ;
+    card:dtype "decimal" ;
+    card:distFamily card:Mixture ;
+    card:priority card:Structural ;
+    dct:source "Account product terms"@en ;
+    card:why "APR is multi-modal across product tiers, not a single mean." ;
+    card:ask "What APR structure do these accounts have? It is usually multi-modal by product tier." .
+bill:f_purchases a card:Field ;
+    skos:prefLabel "Purchase volume"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:distFamily card:ZeroInflatedLognormal ;
+    card:priority card:Structural ;
+    card:why "Spend is zero-inflated and skewed, never Gaussian." ;
+    card:ask "How much do accounts spend per cycle? Many cycles are zero." .
+bill:f_payments a card:Field ;
+    skos:prefLabel "Payment amount"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:distFamily card:Mixture ;
+    card:priority card:Structural ;
+    card:why "Payment behaviour is multi-modal (pay-in-full spike, minimum-payer spike)." ;
+    card:ask "How do accounts pay: in full, minimum, or a mix of archetypes?" .
+bill:f_revolving_balance a card:Field ;
+    skos:prefLabel "Carries a balance (revolves)"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "boolean" ;
+    card:priority card:Structural ;
+    card:why "Whether any account carries a balance past the due date. Trigger for the whole grace-period regime." ;
+    card:ask "Will any accounts carry a balance (revolve), or does everyone pay in full?" .
+bill:f_average_daily_balance a card:DerivedField ;
+    skos:prefLabel "Average daily balance"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:derived true ;
+    card:formula "mean(daily_balance over the cycle)" ;
+    card:priority card:Structural ;
+    card:why "The base for interest arithmetic. Prototype simplification: interest uses a monthly rate (APR/12); no dated daily ledger yet." .
+bill:f_cycle_ending_balance a card:DerivedField ;
+    skos:prefLabel "Cycle ending balance"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:derived true ;
+    card:formula "f_beginning_balance + f_purchases + f_cash_advance + f_fees + f_interest_charged - f_payments - f_credits" ;
+    card:priority card:Structural ;
+    card:why "The balance recurrence. Everything downstream depends on it." .
+bill:f_statement_balance a card:DerivedField ;
+    skos:prefLabel "Statement balance"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:derived true ;
+    card:formula "f_cycle_ending_balance (at statement date)" ;
+    card:priority card:Structural .
+bill:f_paid_in_full_last_cycle a card:DerivedField ;
+    skos:prefLabel "Paid in full last cycle"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "boolean" ;
+    card:derived true ;
+    card:formula "f_payments[t-1] >= f_statement_balance[t-1]" ;
+    card:priority card:Regulatory ;
+    dct:source "Reg Z 1026.7(b)"@en ;
+    card:why "The grace period hinges on this. Makes interest path-dependent on last cycle's payment." ;
+    card:ask "Should this month's interest depend on whether last month was paid in full? Regulation ties the grace period to exactly that." .
+bill:f_grace_eligible a card:DerivedField ;
+    skos:prefLabel "Grace eligible"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "boolean" ;
+    card:derived true ;
+    card:formula "f_paid_in_full_last_cycle" ;
+    card:priority card:Regulatory ;
+    dct:source "Reg Z 1026.7(b)"@en ;
+    card:why "Same-cycle gate: when true, purchases this cycle accrue no interest." .
+bill:f_interest_charged a card:DerivedField ;
+    skos:prefLabel "Interest charged"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:derived true ;
+    card:formula "f_average_daily_balance * (f_apr / 12)" ;
+    card:gate "not f_grace_eligible" ;
+    card:priority card:Regulatory ;
+    dct:source "Reg Z 1026.54"@en ;
+    card:why "Interest is average-daily-balance arithmetic, switched off while grace applies." ;
+    card:ask "Interest here is computed, not sampled: average daily balance times monthly APR, zero during grace. Good?" .
+bill:f_minimum_payment_due a card:DerivedField ;
+    skos:prefLabel "Minimum payment due"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:derived true ;
+    card:formula "max(policy_floor, policy_pct * f_statement_balance + f_fees + f_interest_charged)" ;
+    card:priority card:Structural ;
+    dct:source "Issuer policy"@en ;
+    card:why "Issuer policy, not a fixed law. The regulatory limit (cannot exceed the statement balance) is enforced as an invariant." .
+bill:f_beginning_balance a card:DerivedField ;
+    skos:prefLabel "Beginning balance"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:derived true ;
+    card:formula "f_cycle_ending_balance[t-1]" ;
+    card:priority card:Structural ;
+    card:why "This cycle starts where last cycle ended." .
+bill:f_cash_advance a card:Field ;
+    skos:prefLabel "Cash advance volume"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:distFamily card:ZeroInflatedLognormal ;
+    card:priority card:Structural ;
+    card:why "Cash taken against the card. Prototype simplification (Option A): treated like other balance for interest; the no-grace rule for cash advances is deferred." ;
+    card:ask "Do accounts take cash advances?" .
+bill:f_fees a card:Field ;
+    skos:prefLabel "Fees billed"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:distFamily card:ZeroInflatedLognormal ;
+    card:priority card:Structural ;
+    card:why "Fees billed this cycle (late, cash-advance, annual), lumped for now. Adds to the balance and the minimum payment." .
+bill:f_credits a card:Field ;
+    skos:prefLabel "Credits and refunds"@en ;
+    card:onGrain bill:AccountCycle ;
+    card:dtype "decimal" ;
+    card:distFamily card:ZeroInflatedLognormal ;
+    card:priority card:Structural ;
+    card:why "Refunds and credits posted this cycle. They reduce the balance." .
+
+# ---- Dependencies (+ directlyDependsOn edges for the reasoner) ----
+bill:dep_adb_pur a card:Dependency ;
+    card:source bill:f_purchases ; card:target bill:f_average_daily_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_average_daily_balance card:directlyDependsOn bill:f_purchases .
+bill:dep_adb_pay a card:Dependency ;
+    card:source bill:f_payments ; card:target bill:f_average_daily_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_average_daily_balance card:directlyDependsOn bill:f_payments .
+bill:dep_ceb_pur a card:Dependency ;
+    card:source bill:f_purchases ; card:target bill:f_cycle_ending_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_cycle_ending_balance card:directlyDependsOn bill:f_purchases .
+bill:dep_ceb_pay a card:Dependency ;
+    card:source bill:f_payments ; card:target bill:f_cycle_ending_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_cycle_ending_balance card:directlyDependsOn bill:f_payments .
+bill:dep_stmt_ceb a card:Dependency ;
+    card:source bill:f_cycle_ending_balance ; card:target bill:f_statement_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_statement_balance card:directlyDependsOn bill:f_cycle_ending_balance .
+bill:dep_pif_pay a card:Dependency ;
+    card:source bill:f_payments ; card:target bill:f_paid_in_full_last_cycle ;
+    card:lag 1 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural ;
+    card:why "The lag-1 edge that makes interest path-dependent instead of memoryless." .
+bill:f_paid_in_full_last_cycle card:directlyDependsOn bill:f_payments .
+bill:dep_pif_stmt a card:Dependency ;
+    card:source bill:f_statement_balance ; card:target bill:f_paid_in_full_last_cycle ;
+    card:lag 1 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_paid_in_full_last_cycle card:directlyDependsOn bill:f_statement_balance .
+bill:dep_grace_gate a card:Dependency ;
+    card:source bill:f_paid_in_full_last_cycle ; card:target bill:f_grace_eligible ;
+    card:lag 0 ;
+    card:mechanism card:Gate ;
+    card:priority card:Regulatory ;
+    dct:source "Reg Z 1026.7(b)"@en .
+bill:f_grace_eligible card:directlyDependsOn bill:f_paid_in_full_last_cycle .
+bill:dep_int_adb a card:Dependency ;
+    card:source bill:f_average_daily_balance ; card:target bill:f_interest_charged ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_interest_charged card:directlyDependsOn bill:f_average_daily_balance .
+bill:dep_int_apr a card:Dependency ;
+    card:source bill:f_apr ; card:target bill:f_interest_charged ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_interest_charged card:directlyDependsOn bill:f_apr .
+bill:dep_int_gate a card:Dependency ;
+    card:source bill:f_grace_eligible ; card:target bill:f_interest_charged ;
+    card:lag 0 ;
+    card:mechanism card:Gate ;
+    card:priority card:Regulatory ;
+    dct:source "Reg Z 1026.54"@en ;
+    card:why "Grace switches interest off for the cycle." .
+bill:f_interest_charged card:directlyDependsOn bill:f_grace_eligible .
+bill:dep_min_stmt a card:Dependency ;
+    card:source bill:f_statement_balance ; card:target bill:f_minimum_payment_due ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural ;
+    dct:source "Issuer policy"@en .
+bill:f_minimum_payment_due card:directlyDependsOn bill:f_statement_balance .
+bill:dep_ceb_begin a card:Dependency ;
+    card:source bill:f_beginning_balance ; card:target bill:f_cycle_ending_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_cycle_ending_balance card:directlyDependsOn bill:f_beginning_balance .
+bill:dep_begin_prev a card:Dependency ;
+    card:source bill:f_cycle_ending_balance ; card:target bill:f_beginning_balance ;
+    card:lag 1 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural ;
+    card:why "Next cycle's beginning balance is this cycle's ending balance." .
+bill:f_beginning_balance card:directlyDependsOn bill:f_cycle_ending_balance .
+bill:dep_ceb_cash a card:Dependency ;
+    card:source bill:f_cash_advance ; card:target bill:f_cycle_ending_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_cycle_ending_balance card:directlyDependsOn bill:f_cash_advance .
+bill:dep_ceb_fees a card:Dependency ;
+    card:source bill:f_fees ; card:target bill:f_cycle_ending_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_cycle_ending_balance card:directlyDependsOn bill:f_fees .
+bill:dep_ceb_credits a card:Dependency ;
+    card:source bill:f_credits ; card:target bill:f_cycle_ending_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_cycle_ending_balance card:directlyDependsOn bill:f_credits .
+bill:dep_ceb_int a card:Dependency ;
+    card:source bill:f_interest_charged ; card:target bill:f_cycle_ending_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural ;
+    card:why "Charged interest is added into the ending balance." .
+bill:f_cycle_ending_balance card:directlyDependsOn bill:f_interest_charged .
+bill:dep_adb_cash a card:Dependency ;
+    card:source bill:f_cash_advance ; card:target bill:f_average_daily_balance ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_average_daily_balance card:directlyDependsOn bill:f_cash_advance .
+bill:dep_min_fees a card:Dependency ;
+    card:source bill:f_fees ; card:target bill:f_minimum_payment_due ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_minimum_payment_due card:directlyDependsOn bill:f_fees .
+bill:dep_min_int a card:Dependency ;
+    card:source bill:f_interest_charged ; card:target bill:f_minimum_payment_due ;
+    card:lag 0 ;
+    card:mechanism card:Formula ;
+    card:priority card:Structural .
+bill:f_minimum_payment_due card:directlyDependsOn bill:f_interest_charged .
+
+# ---- Invariants ----
+bill:inv_grace_no_interest a card:Invariant ;
+    skos:prefLabel "Grace implies no interest"@en ;
+    card:expr "f_grace_eligible implies f_interest_charged == 0" ;
+    card:severity "hard" ;
+    card:appliesToGrain bill:AccountCycle ;
+    card:priority card:Regulatory ;
+    dct:source "Reg Z 1026.54"@en .
+bill:inv_balance_recurrence a card:Invariant ;
+    skos:prefLabel "Balance recurrence"@en ;
+    card:expr "abs(f_cycle_ending_balance - (f_beginning_balance + f_purchases + f_cash_advance + f_fees + f_interest_charged - f_payments - f_credits)) < 0.01" ;
+    card:severity "hard" ;
+    card:appliesToGrain bill:AccountCycle ;
+    card:priority card:Structural .
+bill:inv_interest_nonneg a card:Invariant ;
+    skos:prefLabel "Interest not negative"@en ;
+    card:expr "f_interest_charged >= 0" ;
+    card:severity "hard" ;
+    card:appliesToGrain bill:AccountCycle ;
+    card:priority card:Structural .
+bill:inv_min_nonneg a card:Invariant ;
+    skos:prefLabel "Minimum payment not negative"@en ;
+    card:expr "f_minimum_payment_due >= 0" ;
+    card:severity "hard" ;
+    card:appliesToGrain bill:AccountCycle ;
+    card:priority card:Structural .
+bill:inv_min_le_statement a card:Invariant ;
+    skos:prefLabel "Minimum payment capped at statement balance"@en ;
+    card:expr "f_minimum_payment_due <= f_statement_balance" ;
+    card:severity "hard" ;
+    card:appliesToGrain bill:AccountCycle ;
+    card:priority card:Regulatory ;
+    dct:source "Reg Z (min payment cannot exceed amount owed)"@en .
+
+# ---- Obligations ----
+bill:ob_grace a card:RegulatoryObligation ;
+    skos:prefLabel "Grace period handling"@en ;
+    card:triggeredByField bill:f_revolving_balance ;
+    card:requiresField bill:f_paid_in_full_last_cycle , bill:f_grace_eligible , bill:f_interest_charged ;
+    card:requiresInvariant bill:inv_grace_no_interest ;
+    card:priority card:Regulatory ;
+    dct:source "Reg Z 1026.7(b), 1026.54"@en ;
+    card:ask "Since accounts can revolve, we must model the grace period. Add paid-in-full tracking, grace eligibility, and gated interest?" ;
+    card:why "If accounts can revolve, grace-period math is required by law. Getting it wrong misstates interest." .
+bill:ob_balance_recurrence a card:Obligation ;
+    skos:prefLabel "Balance must reconcile"@en ;
+    card:triggeredByField bill:f_cycle_ending_balance ;
+    card:requiresInvariant bill:inv_balance_recurrence ;
+    card:priority card:Structural ;
+    card:why "Once there is an ending balance, it must equal last balance plus flows. The accounting identity." .
